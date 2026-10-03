@@ -1,0 +1,10 @@
+node_modules/
+*.log
+dist/
+.next/
+# secrets and local-only config
+.env
+.env.*
+!.env.example
+.vercel/
+*.tsbuildinfo

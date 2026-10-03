@@ -1,0 +1,183 @@
+# Umbra
+
+A self-hosted Monero payment gateway. You give it your wallet address and your
+**private view key**, never your spend key. It mints a fresh subaddress for
+every invoice, watches your own node for payments to it, and calls your server
+when one arrives.
+
+Because a view key can only read, the money lands in your wallet and stays
+there. Umbra can see payments. It cannot move them, freeze them, or hand them
+to anyone else, and neither can anyone who compromises it.
+
+```
+customer  ──pays──▶  subaddress (your wallet)
+                          │
+   your node ──watches────┘
+        │
+     Umbra ──signed webhook──▶  your shop
+```
+
+> **Status: early.** Working and tested, but young and not independently
+> audited. Run it on stagenet first, start with small amounts, and read
+> [SECURITY.md](SECURITY.md) before putting real money through it.
+
+## What you get
+
+- **Non-custodial by construction.** View key only. No hot wallet, no float, no
+  withdrawal step.
+- **A subaddress per invoice**, so payments match themselves. No payment IDs to
+  chase, no manual reconciliation.
+- **Fiat pricing** in 12 currencies with the exchange rate locked when the
+  invoice is created.
+- **Two webhooks**: `payment_detected` at 0-conf and `payment_confirmed` at the
+  confirmation threshold, each signed with HMAC-SHA256 and retried with backoff
+  until your server answers.
+- **A hosted checkout page** with a QR code, or build your own from the API.
+- **Store integrations**: WooCommerce (a plugin you install) and Shopify (via a
+  manual payment method).
+
+## Requirements
+
+- Your own `monerod` and `monero-wallet-rpc`. A public node works for testing,
+  but it can see which blocks you ask for, which defeats the point.
+- PostgreSQL 14 or newer.
+- Node.js 22 or newer, or Docker.
+
+## Quick start
+
+```bash
+git clone <this repo> && cd umbra/gateway
+cp .env.example .env
+# Generate the key that encrypts stored view keys, and keep a backup of it:
+openssl rand -hex 32
+```
+
+Fill in `.env`, at minimum `DATABASE_URL`, `MASTER_KEY`, `WALLET_PASSWORD`,
+`PUBLIC_BASE_URL`, and the two Monero RPC URLs. Then:
+
+```bash
+docker compose up -d          # Postgres, API and worker; migrations run on start
+curl localhost:3000/healthz
+```
+
+Without Docker:
+
+```bash
+npm install
+npm run migrate               # create the schema
+npm run build
+npm run start:server          # the API
+npm run start:worker          # the chain watcher, in a second process
+```
+
+Run exactly one worker. `monero-wallet-rpc` keeps a single wallet open at a
+time, so a second one would only contend for the same lock.
+
+### Create your merchant account
+
+Account creation is closed by default, because each call writes a wallet file
+and holds the wallet lock for minutes. Open it, create your account, close it
+again:
+
+```bash
+# set SIGNUP_TOKEN in .env, restart, then:
+curl -X POST https://pay.example.com/api/merchants \
+  -H "X-Signup-Token: $SIGNUP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Shop",
+    "address": "4...",
+    "view_key": "...",
+    "webhook_url": "https://myshop.com/umbra/webhook"
+  }'
+```
+
+The response carries your API key and webhook secret **once**. Only a hash of
+the key is stored, so a lost key cannot be recovered.
+
+## Using the API
+
+Create an invoice, send the buyer to `checkout_url`, settle on the webhook:
+
+```bash
+curl -X POST https://pay.example.com/api/invoices \
+  -H "Authorization: Bearer $UMBRA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"price_amount": "25.00", "price_currency": "USD",
+       "return_url": "https://myshop.com/orders/1042",
+       "metadata": {"order_id": 1042}}'
+```
+
+Verify every webhook before trusting it. The signature is HMAC-SHA256 of the
+**raw body**, hex encoded, in `X-Webhook-Signature`:
+
+```js
+const expected = crypto.createHmac("sha256", WEBHOOK_SECRET).update(rawBody).digest("hex");
+const got = req.headers["x-webhook-signature"] ?? "";
+const ok = got.length === expected.length &&
+  crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expected));
+if (!ok) return res.status(401).end();
+```
+
+Full reference: [`docs/api.md`](docs/api.md).
+
+## Integrations
+
+| Platform | How it works |
+| --- | --- |
+| [WooCommerce](integrations/woocommerce) | A plugin you install. Buyers pick Monero, the order is held, and the signed webhook completes it. |
+| Shopify | A manual payment method plus a store connection. Umbra marks the order paid through the Admin API. See [`docs/shopify.md`](docs/shopify.md). |
+
+## Configuration
+
+Everything is environment variables, documented in
+[`gateway/.env.example`](gateway/.env.example). The ones worth knowing:
+
+| Variable | Why it matters |
+| --- | --- |
+| `MASTER_KEY` | Encrypts stored view keys. Back it up. Lose it and every stored key becomes undecryptable. |
+| `PUBLIC_BASE_URL` | Must be the final HTTPS host. A redirect from the bare domain to `www` counts as a failed webhook delivery. |
+| `SIGNUP_TOKEN` | Account creation is disabled unless set. |
+| `CONFIRMATIONS` | Confirmations before a payment is final. Default 10. |
+| `TRUST_PROXY` | Set behind a reverse proxy so rate limits see the real client. |
+| `ALLOW_PRIVATE_WEBHOOKS` | Leave off. It disables the check that stops webhooks reaching inside your network. |
+
+## Running it safely
+
+- **Put a TLS-terminating reverse proxy in front.** The gateway binds to
+  loopback by default and speaks plain HTTP.
+- **Back up two things**: the database, and the `monero-wallet-rpc` wallet
+  directory. The database holds encrypted view keys and invoice history; the
+  wallet files hold the subaddress indexes that map payments to invoices.
+- **Watch `/healthz`.** `?deep=1` also checks wallet-rpc and the daemon, and
+  reports unhealthy while the node is still syncing.
+- **Keep wallet-rpc and the daemon off the public internet.**
+
+## Known limits
+
+- One `monero-wallet-rpc` means merchants are scanned one after another. This
+  is fine for a shop or a handful of them, and it is the first thing to change
+  for a large multi-merchant deployment.
+- Incoming transfer amounts come from wallet-rpc as JSON numbers, so a single
+  payment above roughly 9000 XMR would lose precision.
+- There is no API key rotation endpoint yet.
+- Refunds are something you send yourself, from your own wallet. Umbra never
+  holds funds and cannot refund on your behalf.
+
+## Development
+
+```bash
+npm install
+npm run migrate
+npm run server     # API with reload
+npm run worker     # chain watcher
+npm test           # unit tests
+```
+
+`gateway/tools/` holds a mock Shopify store and a webhook receiver, so the
+integrations can be exercised without a real store or real coins.
+
+## License
+
+MIT, except the WooCommerce plugin, which is GPL-2.0-or-later because WordPress
+requires it. See [LICENSES.md](LICENSES.md).

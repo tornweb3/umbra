@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gateway:
+    name: Gateway (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: gateway/package-lock.json
+      - run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  migrations:
+    name: Migrations apply to a clean database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: umbra
+          POSTGRES_PASSWORD: umbra
+          POSTGRES_DB: umbra
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U umbra" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: gateway
+    env:
+      DATABASE_URL: postgres://umbra:umbra@127.0.0.1:5432/umbra
+      MASTER_KEY: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: gateway/package-lock.json
+      - run: npm ci
+      - name: Apply migrations
+        run: npm run migrate
+      - name: Running them again changes nothing
+        run: npm run migrate | grep "up to date"
+
+  plugin:
+    name: WooCommerce plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax
+        run: |
+          find integrations/woocommerce -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: gateway
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

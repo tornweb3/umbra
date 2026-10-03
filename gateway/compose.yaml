@@ -1,0 +1,72 @@
+# Postgres, the API and the worker. Monero stays outside this file: run your
+# own monerod and monero-wallet-rpc, then point the URLs below at them.
+#
+#   cp .env.example .env     and fill it in
+#   docker compose up -d
+#   curl localhost:3000/healthz
+#
+# Migrations run automatically when the gateway container starts.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: umbra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: umbra
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umbra -d umbra"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  gateway:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://umbra:${POSTGRES_PASSWORD}@db:5432/umbra
+      BIND_ADDRESS: 0.0.0.0
+      # Inside a container, 127.0.0.1 is the container itself. These reach the
+      # Monero services on the host; use the real hostnames if they live
+      # elsewhere, and keep them off the public internet.
+      WALLET_RPC_URL: ${WALLET_RPC_URL:-http://host.docker.internal:18083/json_rpc}
+      DAEMON_RPC_URL: ${DAEMON_RPC_URL:-http://host.docker.internal:18081/json_rpc}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Bound to loopback: put your TLS-terminating reverse proxy in front.
+    ports:
+      - "127.0.0.1:3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: sh -c "node dist/migrate.js && node dist/server.js"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/healthz > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://umbra:${POSTGRES_PASSWORD}@db:5432/umbra
+      WALLET_RPC_URL: ${WALLET_RPC_URL:-http://host.docker.internal:18083/json_rpc}
+      DAEMON_RPC_URL: ${DAEMON_RPC_URL:-http://host.docker.internal:18081/json_rpc}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Run exactly one: wallet-rpc holds a single wallet open at a time, so a
+    # second worker would only contend for the same lock.
+    command: node dist/worker.js
+
+volumes:
+  db-data:
