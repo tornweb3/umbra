@@ -1,5 +1,7 @@
 # Umbra
 
+**[umbra.international](https://www.umbra.international)**
+
 A self-hosted Monero payment gateway. You give it your wallet address and your
 **private view key**, never your spend key. It mints a fresh subaddress for
 every invoice, watches your own node for payments to it, and calls your server
@@ -46,7 +48,7 @@ customer  ──pays──▶  subaddress (your wallet)
 ## Quick start
 
 ```bash
-git clone <this repo> && cd umbra/gateway
+git clone https://github.com/tornweb3/umbra.git && cd umbra/gateway
 cp .env.example .env
 # Generate the key that encrypts stored view keys, and keep a backup of it:
 openssl rand -hex 32
