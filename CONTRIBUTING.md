@@ -49,13 +49,36 @@ plugin, and a Docker build.
 
 ### Testing without coins
 
+- `tools/wallet-mock.mjs` stands in for `monero-wallet-rpc` and `monerod`, so
+  the whole payment path runs with no node, no wallet and no coins.
 - `tools/shopify-mock.mjs` stands in for a Shopify store: it serves the Admin
   API calls the bridge makes and fires signed webhooks.
 - `tools/webhook-receiver.mjs` verifies outgoing webhook signatures and prints
   the payloads.
 
-A payment can be simulated by setting an invoice to `confirmed` in the
-database, which is enough to exercise everything downstream of detection.
+A full payment, start to finish:
+
+```bash
+node tools/wallet-mock.mjs 4200
+node tools/webhook-receiver.mjs <your webhook secret> 4000
+
+WALLET_RPC_URL=http://127.0.0.1:4200/json_rpc \
+DAEMON_RPC_URL=http://127.0.0.1:4200/daemon/json_rpc \
+ALLOW_PRIVATE_WEBHOOKS=true npm run server   # and npm run worker
+
+# create an invoice, note its subaddr_index, then pay it into the mempool
+curl -X POST localhost:4200/_mock/pay -d '{"subaddr_index":1,"amount_xmr":"0.25"}'
+curl -X POST localhost:4200/_mock/confirm -d '{"confirmations":10}'
+```
+
+`/_mock/drop` makes a 0-conf transaction vanish, which is the double-spend case
+the worker reverts; `/_mock/state` dumps what the mock thinks it holds. The
+mock refuses any call that needs an open wallet when none is open, so code that
+forgets `withWallet()` fails here rather than passing in testing and breaking
+against the real thing.
+
+Setting an invoice to `confirmed` directly in the database also works for
+anything downstream of detection, but the mock exercises the detection itself.
 
 ## House style
 

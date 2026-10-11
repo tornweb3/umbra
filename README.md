@@ -211,8 +211,10 @@ npm run worker     # chain watcher
 npm test           # unit tests
 ```
 
-`gateway/tools/` holds a mock Shopify store and a webhook receiver, so the
-integrations can be exercised without a real store or real coins.
+`gateway/tools/` holds a mock `monero-wallet-rpc` and `monerod`, a mock
+Shopify store and a webhook receiver, so the whole payment path and both
+integrations can be exercised with no node, no store and no coins. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 The unit tests mock the database and run anywhere. The tests in
 `gateway/test/integration/` execute real SQL and skip unless you give them a
