@@ -25,6 +25,8 @@
     "@types/node": "^24.0.0",
     "@types/pg": "^8.11.10",
     "@types/qrcode": "^1.5.5",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.1",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^5.0.3"
