@@ -11,6 +11,7 @@ import { mountAuthRoutes } from "./auth.js";
 import { portalHeaders } from "./headers.js";
 import { mountInvoiceRoutes } from "./invoices.js";
 import { mountPortalPageRoutes } from "./pages.js";
+import { mountPortalPosRoutes } from "./pos.js";
 import { portalNav } from "./nav.js";
 import { mountSettingsRoutes } from "./settings.js";
 import { mountSetupRoutes } from "./setup.js";
@@ -28,6 +29,7 @@ export function mountPortalRoutes(app: express.Express, opts: PortalOptions): vo
   mountAuthRoutes(app, opts);
   mountInvoiceRoutes(app, { baseUrl: opts.baseUrl });
   mountPortalPageRoutes(app, { baseUrl: opts.baseUrl });
+  mountPortalPosRoutes(app, { baseUrl: opts.baseUrl });
   mountSettingsRoutes(app, { baseUrl: opts.baseUrl });
   mountStatusRoutes(app, opts);
 

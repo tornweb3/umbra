@@ -11,7 +11,7 @@ import {
   type InvoiceView,
 } from "../invoiceQueries.js";
 import { xmrFromAtomic } from "../money.js";
-import { SUPPORTED_CURRENCIES } from "../rates.js";
+import { RateUnavailableError, SUPPORTED_CURRENCIES } from "../rates.js";
 import { merchantActionLimit } from "../limits.js";
 import { serverError } from "../security.js";
 import { statusBadge, timestamp, when } from "../ui/components.js";
@@ -256,6 +256,7 @@ export function mountInvoiceRoutes(app: express.Express, opts: InvoiceRoutesOpti
     } catch (e: any) {
       if (e instanceof InvoiceInputError) return fail(e.message);
       if (e instanceof WalletNotReadyError) return fail(e.message, 503);
+      if (e instanceof RateUnavailableError) return fail(e.message, 503);
       serverError(res, e, `${req.method} ${req.path}`);
     }
   });

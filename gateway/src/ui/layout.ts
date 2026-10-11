@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import type express from "express";
 import { html, raw, SafeHtml } from "./html.js";
+import { POS_ENROL_JS, POS_JS } from "./posScript.js";
 import { CHECKOUT_JS } from "./scripts.js";
 
 export const CSS = `
@@ -27,6 +28,22 @@ body.u-minimal button { width: 100%; margin-top: 12px; }
 .filters label { margin: 0; }
 .filters input, .filters select { width: auto; min-width: 160px; }
 .filters button { padding: 9px 16px; }
+/* The till. Keys are 48px+ because this is used one-handed behind a counter,
+   and the amount sits above them so a thumb never covers it. */
+.till { max-width: 420px; margin-inline: auto; }
+.till-head { display: flex; justify-content: space-between; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.till-amount { font-size: 44px; font-weight: 700; letter-spacing: -.03em; margin: 22px 0 6px; }
+.till-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
+.till-keys button { font-size: 22px; padding: 18px 0; min-height: 60px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); }
+.till-charge { width: 100%; min-height: 60px; font-size: 19px; }
+.till img { margin: 14px auto; display: block; }
+.receipt { text-align: left; }
+.receipt-tx { padding-left: 18px; font-size: 12px; }
+@media print {
+  .u-minimal { margin: 0; max-width: none; }
+  .receipt img { display: none; }
+}
+
 /* Public payment pages. */
 .pay-page { text-align: left; }
 .pay-page h1 { font-size: 26px; margin: 0 0 10px; }
@@ -80,6 +97,8 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 
+label.check { display: flex; gap: 10px; align-items: start; margin: 10px 0; font-size: 14px; }
+label.check input { width: auto; margin-top: 3px; }
 label { display: block; font-size: 13px; margin: 14px 0 4px; }
 textarea { resize: vertical; }
 input, select, textarea { font: inherit; font-size: 16px; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: inherit; }
@@ -92,6 +111,8 @@ button:disabled { opacity: .5; cursor: default; }
 const ASSETS: Record<string, { body: string; type: string }> = {
   "umbra.css": { body: CSS, type: "text/css; charset=utf-8" },
   "checkout.js": { body: CHECKOUT_JS, type: "text/javascript; charset=utf-8" },
+  "pos.js": { body: POS_JS, type: "text/javascript; charset=utf-8" },
+  "pos-enrol.js": { body: POS_ENROL_JS, type: "text/javascript; charset=utf-8" },
 };
 
 /** Content-addressed so a deploy busts the cache and nothing else does. */

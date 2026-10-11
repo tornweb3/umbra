@@ -25,6 +25,7 @@ import {
   type PaymentPage,
 } from "./pages.js";
 import { renderPageBusy, renderPageGone, renderPaymentPage } from "./pagesRender.js";
+import { RateUnavailableError } from "./rates.js";
 import { rateLimit, serverError } from "./security.js";
 import { ensurePoolEnabled, PoolEmptyError } from "./subaddresses.js";
 
@@ -171,7 +172,12 @@ export function mountPageRoutes(app: express.Express, baseUrl: string): void {
       });
     } catch (e: any) {
       if (e instanceof PageInputError || e instanceof InvoiceInputError) return fail(e.message);
-      if (e instanceof PoolEmptyError || e instanceof PageBusyError || e instanceof WalletNotReadyError) {
+      if (
+        e instanceof PoolEmptyError ||
+        e instanceof PageBusyError ||
+        e instanceof WalletNotReadyError ||
+        e instanceof RateUnavailableError
+      ) {
         res.setHeader("Retry-After", "30");
         if (!wantsHtml) return res.status(503).json({ error: e.message });
         res.setHeader("Content-Security-Policy", CSP(nonce));

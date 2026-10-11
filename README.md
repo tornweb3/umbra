@@ -29,11 +29,13 @@ customer  ──pays──▶  subaddress (your wallet)
   withdrawal step.
 - **A subaddress per invoice**, so payments match themselves. No payment IDs to
   chase, no manual reconciliation.
-- **Fiat pricing** in 12 currencies with the exchange rate locked when the
-  invoice is created.
-- **Two webhooks**: `payment_detected` at 0-conf and `payment_confirmed` at the
-  confirmation threshold, each signed with HMAC-SHA256 and retried with backoff
-  until your server answers.
+- **Fiat pricing** in 48 currencies with the exchange rate locked when the
+  invoice is created, a bad tick from a provider ignored, and a quote refused
+  rather than guessed when no rate is obtainable.
+- **Signed webhooks**: `payment_detected` at 0-conf and `payment_confirmed` at
+  the confirmation threshold, plus opt-in events for expiry, underpayment,
+  overpayment, a crowdfunding goal and a cashier's acceptance. HMAC-SHA256,
+  retried with backoff until your server answers.
 - **A hosted checkout page** with a QR code, or build your own from the API.
 - **A merchant console in the browser**, served by the gateway itself: set the
   gateway up, read your invoices and their webhook delivery log, rotate
@@ -42,6 +44,8 @@ customer  ──pays──▶  subaddress (your wallet)
 - **Payment pages**: a donation page, a tip jar or a pay link, shareable as a
   URL, with no code and no JavaScript on the page. See
   [`docs/payment-pages.md`](docs/payment-pages.md).
+- **Point of sale**: a till in a browser for the counter, on the same gateway
+  and the same ledger as the website. See [`docs/pos.md`](docs/pos.md).
 - **Store integrations**: WooCommerce (a plugin you install) and Shopify (via a
   manual payment method).
 

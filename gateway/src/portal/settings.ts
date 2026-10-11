@@ -10,6 +10,7 @@ import { query } from "../db.js";
 import { route } from "../http.js";
 import { keyState, revokePreviousKey, rotateApiKey } from "../merchants.js";
 import { newSecret } from "../crypto.js";
+import { DEFAULT_EVENTS, setWebhookEvents, WEBHOOK_EVENTS, webhookEvents, type WebhookEvent } from "../webhooks.js";
 import { assertSafeWebhookUrl, rateLimit, serverError, UnsafeUrlError } from "../security.js";
 import { timestamp, when } from "../ui/components.js";
 import { html } from "../ui/html.js";
@@ -40,8 +41,19 @@ function reauthFresh(reauthAt: string | null): boolean {
   return Boolean(reauthAt && Date.now() - new Date(reauthAt).getTime() < REAUTH_WINDOW_MS);
 }
 
+const EVENT_LABEL: Record<string, string> = {
+  payment_detected: "a payment is seen, before confirmations",
+  payment_confirmed: "a payment reaches the confirmation threshold",
+  invoice_expired: "an invoice expires with nothing received",
+  payment_underpaid: "an invoice expires with part of the money received",
+  payment_overpaid: "more arrives than was asked for",
+  page_goal_reached: "a crowdfunding page reaches its goal",
+  pos_charge_accepted: "a cashier accepts a sale by hand",
+};
+
 interface PageState {
   csrf: string;
+  events: WebhookEvent[];
   fresh: boolean;
   webhookUrl: string | null;
   key: Awaited<ReturnType<typeof keyState>>;
@@ -97,6 +109,28 @@ ${csrf}
 </form>`
 )}
 ${when(!state.fresh, () => html`<p class="mono">${state.webhookUrl ?? "none"}</p>`)}
+</div>
+
+<div class="card left">
+<h2>Which webhooks</h2>
+<p class="hint">The first two are always on, because an integration written before the others
+existed depends on them. Anything new is off until you ask for it.</p>
+${when(
+  state.fresh,
+  () => html`<form method="post" action="/portal/settings/webhook-events">
+${csrf}
+${WEBHOOK_EVENTS.map(
+    (event) => html`<label class="check"><input type="checkbox" name="events" value="${event}"
+${state.events.includes(event) ? "checked" : ""} ${DEFAULT_EVENTS.includes(event) ? "disabled checked" : ""}>
+<span><span class="mono">${event}</span><br><span class="muted">${EVENT_LABEL[event]}</span></span></label>`
+  )}
+<button type="submit">Save</button>
+</form>`
+)}
+${when(
+  !state.fresh,
+  () => html`<ul>${state.events.map((e) => html`<li class="mono">${e}</li>`)}</ul>`
+)}
 </div>
 
 <div class="card left">
@@ -200,6 +234,7 @@ async function loadState(req: express.Request, extra: Partial<PageState> = {}): 
     fresh: reauthFresh(p.reauthAt),
     webhookUrl: p.merchant.webhook_url,
     key: await keyState(p.merchant.id),
+    events: await webhookEvents(p.merchant.id),
     sessions: await listSessions(p.userId, p.sessionId),
     ...extra,
   };
@@ -250,6 +285,17 @@ export function mountSettingsRoutes(app: express.Express, opts: SettingsOptions)
         await loadState(req, {
           banner: { kind: "info", text: raw ? "Webhook URL saved." : "Webhook delivery is off: no URL set." },
         })
+      )
+    );
+  }));
+
+  app.post("/portal/settings/webhook-events", session, csrf, recent, changeLimit, route(async (req, res) => {
+    const raw = (req.body as any)?.events;
+    const events = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+    const enabled = await setWebhookEvents(portal(req).merchant.id, events);
+    res.send(
+      await loadState(req, {}).then((st) =>
+        settingsPage({ ...st, events: enabled, banner: { kind: "info", text: "Webhook events saved." } })
       )
     );
   }));

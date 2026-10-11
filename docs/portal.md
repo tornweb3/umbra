@@ -108,6 +108,10 @@ wallet is still being prepared.
 **Pages.** Create and edit payment pages, copy the public link, and archive
 or reopen one. Described in [payment-pages.md](payment-pages.md).
 
+**Point of sale.** Enrol a till by showing it a QR code, see which devices
+are in use, revoke one instantly, or issue it a fresh code. Described in
+[pos.md](pos.md).
+
 **Settings.** The webhook URL, webhook secret rotation, API key rotation and
 revocation, the console password, and the list of active sessions.
 

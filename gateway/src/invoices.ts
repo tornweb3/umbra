@@ -3,7 +3,7 @@ import { query } from "./db.js";
 import { walletRpc, withWallet } from "./walletRpc.js";
 import { withClaim } from "./subaddresses.js";
 import { atomicFromXmr } from "./money.js";
-import { getXmrRate, isSupportedCurrency, SUPPORTED_CURRENCIES } from "./rates.js";
+import { getXmrQuote, isSupportedCurrency, SUPPORTED_CURRENCIES } from "./rates.js";
 
 // Bad caller input; routes map it to 400. Anything else is a server error.
 export class InvoiceInputError extends Error {}
@@ -34,7 +34,7 @@ export interface CreatedInvoice {
   id: string;
   subaddress: string;
   amountAtomic: bigint;
-  fiat: { amount: number; currency: string; rate: number } | null;
+  fiat: { amount: number; currency: string; rate: number; rateAgeSeconds: number } | null;
   status: string;
   return_url: string | null;
   metadata: Record<string, unknown> | null;
@@ -88,10 +88,10 @@ export async function createInvoice(
     if (!Number.isFinite(amount) || amount <= 0) throw new InvoiceInputError("price_amount must be a positive number");
     if (typeof price_currency !== "string" || !isSupportedCurrency(price_currency))
       throw new InvoiceInputError(`price_currency must be one of: ${SUPPORTED_CURRENCIES.join(", ")}`);
-    const rate = await getXmrRate(price_currency);
+    const quote = await getXmrQuote(price_currency);
     // Rate is a float market price; sub-piconero rounding error is irrelevant here.
-    amountAtomic = BigInt(Math.round((amount / rate) * 1e12));
-    fiat = { amount, currency: price_currency, rate };
+    amountAtomic = BigInt(Math.round((amount / quote.rate) * 1e12));
+    fiat = { amount, currency: price_currency, rate: quote.rate, rateAgeSeconds: quote.ageSeconds };
   } else {
     try {
       amountAtomic = atomicFromXmr(amount_xmr as string);

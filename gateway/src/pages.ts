@@ -5,6 +5,7 @@ import { derivedSecret } from "./crypto.js";
 import { query } from "./db.js";
 import { isSupportedCurrency, SUPPORTED_CURRENCIES } from "./rates.js";
 import { atomicFromXmr } from "./money.js";
+import { enqueueWebhook } from "./webhooks.js";
 
 export class PageInputError extends Error {}
 /** The page exists but will not mint right now. Routes answer 503. */
@@ -545,7 +546,26 @@ export async function recomputeProgress(pageId: string): Promise<void> {
        RETURNING id`,
       [pageId, raised]
     );
-    if (crossed.length) console.log(`page ${pageId}: goal reached (${raised})`);
+    if (crossed.length) {
+      console.log(`page ${pageId}: goal reached (${raised})`);
+      // Hung off the invoice that crossed it, which always exists, so the
+      // delivery row keeps its invoice and dispatchWebhooks needs no change.
+      // A delivery with no invoice would sit undelivered and silent forever,
+      // because that query joins invoices to reach the merchant.
+      const { rows: last } = await query<{ id: string }>(
+        `SELECT i.id FROM invoices i
+         WHERE i.payment_page_id = $1 AND i.status = 'confirmed'
+         ORDER BY i.created_at DESC LIMIT 1`,
+        [pageId]
+      );
+      if (last[0]) {
+        await enqueueWebhook(last[0].id, "page_goal_reached", {
+          payment_page_id: pageId,
+          raised,
+          goal_amount: page.goal_amount,
+        });
+      }
+    }
   }
 }
 

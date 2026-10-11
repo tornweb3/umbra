@@ -15,6 +15,7 @@ import { walletRpc, withWallet } from "./walletRpc.js";
 import { xmrFromAtomic } from "./money.js";
 import { provisionPendingWallets } from "./merchants.js";
 import { refreshAllProgress } from "./pages.js";
+import { enqueueWebhook } from "./webhooks.js";
 import { refillPools, sweepClaimedPool } from "./subaddresses.js";
 import { sweepExpiredSessions } from "./portal/session.js";
 import { processShopify } from "./shopify.js";
@@ -45,11 +46,30 @@ interface InvoiceRow {
 }
 
 async function expireInvoices(): Promise<void> {
-  const { rows } = await query(
-    `UPDATE invoices SET status = 'expired'
-     WHERE status = 'pending' AND expires_at < now() RETURNING id`
+  const { rows } = await query<{ id: string; received: string; due: string }>(
+    `WITH expired AS (
+       UPDATE invoices SET status = 'expired'
+       WHERE status = 'pending' AND expires_at < now()
+       RETURNING id, amount_atomic
+     )
+     SELECT e.id, e.amount_atomic AS due,
+            COALESCE(SUM(p.amount_atomic), 0)::text AS received
+     FROM expired e LEFT JOIN payments p ON p.invoice_id = e.id
+     GROUP BY e.id, e.amount_atomic`
   );
-  for (const r of rows) console.log(`invoice ${r.id}: expired`);
+  for (const r of rows) {
+    const received = BigInt(r.received);
+    if (received > 0n) {
+      // Part of the money arrived and the window closed. The merchant has to
+      // decide what to do about it, so tell them once rather than leaving it
+      // to be noticed.
+      console.log(`invoice ${r.id}: expired underpaid (${xmrFromAtomic(received)} of ${xmrFromAtomic(BigInt(r.due))} XMR)`);
+      await enqueueWebhook(r.id, "payment_underpaid");
+    } else {
+      console.log(`invoice ${r.id}: expired`);
+      await enqueueWebhook(r.id, "invoice_expired");
+    }
+  }
 }
 
 async function scanMerchants(): Promise<void> {
@@ -126,55 +146,27 @@ async function scanMerchants(): Promise<void> {
 
         if (inv.status === "pending" && totalAtomic >= due) {
           await query(`UPDATE invoices SET status = 'detected' WHERE id = $1 AND status = 'pending'`, [inv.id]);
-          await enqueueWebhook(inv, "payment_detected", txids, totalAtomic, minConf, m.webhook_url !== null);
+          await enqueueWebhook(inv.id, "payment_detected");
           console.log(`invoice ${inv.id}: detected (${xmrFromAtomic(totalAtomic)} XMR, ${txids.length} tx)`);
         }
 
         if (inv.status !== "confirmed" && confirmedAtomic >= due) {
           await query(`UPDATE invoices SET status = 'confirmed' WHERE id = $1 AND status <> 'confirmed'`, [inv.id]);
-          await enqueueWebhook(inv, "payment_confirmed", txids, totalAtomic, minConf, m.webhook_url !== null);
+          await enqueueWebhook(inv.id, "payment_confirmed");
           console.log(`invoice ${inv.id}: confirmed`);
+          if (confirmedAtomic > due) {
+            // Kept, not returned: refunds come from the merchant's own wallet.
+            await enqueueWebhook(inv.id, "payment_overpaid", {
+              overpaid_atomic: (confirmedAtomic - due).toString(),
+              overpaid_xmr: xmrFromAtomic(confirmedAtomic - due),
+            });
+          }
         }
       }
     } catch (e: any) {
       console.error(`scan merchant ${m.id} failed: ${e.message}`);
     }
   }
-}
-
-async function enqueueWebhook(
-  inv: InvoiceRow,
-  event: string,
-  txids: string[],
-  receivedAtomic: bigint,
-  confirmations: number,
-  deliver: boolean
-): Promise<void> {
-  // A merchant with no webhook URL uses the hosted checkout page and polls the
-  // API. Queueing deliveries for them would pile up rows nothing can ever send.
-  if (!deliver) return;
-  const due = BigInt(inv.amount_atomic);
-  const payload = {
-    event,
-    invoice_id: inv.id,
-    merchant_id: inv.merchant_id,
-    amount_due_atomic: due.toString(),
-    amount_due_xmr: xmrFromAtomic(due),
-    amount_received_atomic: receivedAtomic.toString(),
-    amount_received_xmr: xmrFromAtomic(receivedAtomic),
-    price_amount: inv.price_amount,
-    price_currency: inv.price_currency,
-    rate: inv.rate,
-    txids,
-    confirmations,
-    metadata: inv.metadata ?? null,
-    timestamp: new Date().toISOString(),
-  };
-  await query(
-    `INSERT INTO webhook_deliveries (invoice_id, event, payload)
-     VALUES ($1, $2, $3) ON CONFLICT (invoice_id, event) DO NOTHING`,
-    [inv.id, event, JSON.stringify(payload)]
-  );
 }
 
 async function dispatchWebhooks(): Promise<void> {
@@ -267,8 +259,12 @@ async function main(): Promise<void> {
       await provisionPendingWallets();
       await refillPools();
       await sweepExpiredSessions();
-      await expireInvoices();
+      // Scan before expiring, so a payment that arrived in the last seconds
+      // of the window is recorded first. The other order declares an invoice
+      // abandoned while its money is sitting unscanned in the mempool, and
+      // reports it as "expired with nothing received" when it was paid.
       await scanMerchants();
+      await expireInvoices();
       await dispatchWebhooks();
       await refreshAllProgress();
       await processShopify().catch((e) => console.error(`shopify pass failed: ${e.message}`));

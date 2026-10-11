@@ -6,6 +6,7 @@ const LINKS: Array<[key: string, href: string, label: string]> = [
   ["overview", "/portal", "Overview"],
   ["invoices", "/portal/invoices", "Invoices"],
   ["pages", "/portal/pages", "Pages"],
+  ["pos", "/portal/pos", "Point of sale"],
   ["settings", "/portal/settings", "Settings"],
   ["status", "/portal/status", "Status"],
 ];

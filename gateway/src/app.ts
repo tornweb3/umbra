@@ -11,9 +11,12 @@ import { merchant, requireAuth, UUID_RE } from "./http.js";
 import { createInvoice, InvoiceInputError, WalletNotReadyError } from "./invoices.js";
 import { createMerchant, keyState, MAX_GRACE_MINUTES, revokePreviousKey, rotateApiKey } from "./merchants.js";
 import { poolState, setPoolTarget } from "./subaddresses.js";
+import { DEFAULT_EVENTS, setWebhookEvents, WEBHOOK_EVENTS, webhookEvents } from "./webhooks.js";
 import { INVOICE_SELECT, INVOICE_STATUSES, invoiceJson, listInvoices } from "./invoiceQueries.js";
+import { RateUnavailableError } from "./rates.js";
 import { mountCheckoutRoutes } from "./checkout.js";
 import { mountPageRoutes } from "./pagesRoutes.js";
+import { mountPosRoutes } from "./posRoutes.js";
 import { mountPortalRoutes } from "./portal/index.js";
 import { securityHeaders } from "./headers.js";
 import { mountAssetRoutes } from "./ui/layout.js";
@@ -166,6 +169,7 @@ export function createApp({ baseUrl, network, portal }: AppOptions): express.Exp
         price_amount: inv.fiat?.amount ?? null,
         price_currency: inv.fiat?.currency ?? null,
         rate: inv.fiat?.rate ?? null,
+        rate_age_seconds: inv.fiat?.rateAgeSeconds ?? null,
         status: inv.status,
         return_url: inv.return_url,
         metadata: inv.metadata,
@@ -176,6 +180,11 @@ export function createApp({ baseUrl, network, portal }: AppOptions): express.Exp
       if (e instanceof InvoiceInputError) return res.status(400).json({ error: e.message });
       if (e instanceof WalletNotReadyError) {
         res.setHeader("Retry-After", "60");
+        return res.status(503).json({ error: e.message });
+      }
+      // No usable exchange rate: refusing beats quoting a guess.
+      if (e instanceof RateUnavailableError) {
+        res.setHeader("Retry-After", "30");
         return res.status(503).json({ error: e.message });
       }
       serverError(res, e, `${req.method} ${req.path}`);
@@ -344,9 +353,28 @@ export function createApp({ baseUrl, network, portal }: AppOptions): express.Exp
     }
   });
 
+  app.get("/api/me/webhook-events", requireAuth, async (req, res) => {
+    try {
+      res.json({ enabled: await webhookEvents(merchant(req).id), available: WEBHOOK_EVENTS, always_on: DEFAULT_EVENTS });
+    } catch (e) {
+      serverError(res, e, `${req.method} ${req.path}`);
+    }
+  });
+
+  app.put("/api/me/webhook-events", requireAuth, async (req, res) => {
+    try {
+      const events = (req.body ?? {}).events;
+      if (!Array.isArray(events)) return res.status(400).json({ error: "events must be an array" });
+      res.json({ enabled: await setWebhookEvents(merchant(req).id, events) });
+    } catch (e) {
+      serverError(res, e, `${req.method} ${req.path}`);
+    }
+  });
+
   mountCheckoutRoutes(app, publicLimit);
 
   mountPageRoutes(app, baseUrl);
+  mountPosRoutes(app, baseUrl);
   mountShopifyRoutes(app, baseUrl);
 
   if (portalEnabled) {

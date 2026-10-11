@@ -107,7 +107,16 @@ Price in Monero or in fiat, not both. Limited to 60 per minute per account.
 | `metadata` | JSON object up to 4 KB, echoed in every webhook for this invoice. |
 
 Supported currencies: USD, EUR, GBP, CAD, AUD, CHF, JPY, NZD, SEK, PLN, BRL,
-INR.
+INR, NOK, DKK, CZK, HUF, RON, BGN, TRY, UAH, ISK, MXN, ARS, CLP, COP, PEN, CNY,
+HKD, TWD, SGD, KRW, MYR, THB, IDR, PHP, VND, BDT, PKR, LKR, ZAR, NGN, KES, GHS,
+EGP, MAD, AED, SAR, QAR, ILS.
+
+The response carries `rate_age_seconds`: normally 0, and above zero when every
+rate provider was briefly unreachable and the last known rate was used. A rate
+that has moved more than 50% since the last known one is treated as a bad tick
+and ignored, and once no rate has been obtainable for ten minutes the request
+is refused with `503` rather than quoting a guess. Both thresholds are
+configurable (`RATE_JUMP_REJECT_PCT`, `RATE_MAX_STALE_MS`).
 
 ```json
 {
@@ -179,12 +188,33 @@ invoice and kept.
 
 ## Webhooks
 
-Two events, delivered as `POST` with the event in `X-Webhook-Event`:
+Delivered as `POST` with the event in `X-Webhook-Event`. The first two are
+always on; the rest are off until you enable them, so an integration written
+against the original two is never surprised by a new one.
 
 | Event | When |
 | --- | --- |
 | `payment_detected` | The full amount was seen in the mempool or a fresh block. |
 | `payment_confirmed` | The payment reached the confirmation threshold. |
+| `invoice_expired` | The window closed with nothing received. |
+| `payment_underpaid` | The window closed with part of the money received. Fired once, at close. |
+| `payment_overpaid` | More confirmed than was asked for. Carries `overpaid_xmr`. |
+| `page_goal_reached` | A crowdfunding page crossed its goal. Carries `payment_page_id` and `raised`. |
+| `pos_charge_accepted` | A cashier accepted a sale by hand. Carries `accepted_by_device`. |
+
+Enable them in the console under Settings, or:
+
+```bash
+curl -X PUT https://pay.example.com/api/me/webhook-events \
+  -H "Authorization: Bearer $UMBRA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"events": ["invoice_expired", "payment_underpaid"]}'
+```
+
+`GET /api/me/webhook-events` lists what is enabled, what exists, and which two
+cannot be switched off. Every event is at most once per invoice, enforced by a
+unique constraint, and a merchant with no webhook URL has nothing queued at
+all.
 
 ```
 X-Webhook-Event: payment_confirmed
@@ -266,6 +296,27 @@ where the ticket comes from the page's own HTML, and answers `201` with a
 `checkout_url`. It answers `503` with `Retry-After` when the pool is empty or
 the page has too many unfinished payments, and `403` when the ticket is
 missing, stale or was issued for another page.
+
+## Point of sale
+
+Full guide in [pos.md](pos.md). A till authenticates with its own
+`xmr_pos_...` token, never the merchant's API key.
+
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `POST` | `/api/pos/devices` | key | Create a device. Returns a one-time enrolment code. |
+| `GET` | `/api/pos/devices` | key | List devices and their state. |
+| `PATCH` | `/api/pos/devices/:id` | key | Rename, change the 0-conf limit or the window. |
+| `POST` | `/api/pos/devices/:id/revoke` | key | Instant. The till 401s on its next request. |
+| `POST` | `/api/pos/devices/:id/enrol-code` | key | A fresh code, invalidating the old credential. |
+| `POST` | `/pos/api/enrol` | none | The till swaps a code for its token. Single use. |
+| `GET` | `/pos/api/device` | till | Its own settings, and nothing else. |
+| `POST` | `/pos/api/charges` | till | Take a charge. |
+| `GET` | `/pos/api/charges` | till | This device's last 20, so a replacement phone can resume. |
+| `GET` | `/pos/api/charges/:id` | till | Poll one. |
+| `POST` | `/pos/api/charges/:id/cancel` | till | Only while nothing has arrived. |
+| `POST` | `/pos/api/charges/:id/accept` | till | The operator says the sale is done. Never touches `status`. |
+| `POST` | `/pos/api/charges/:id/remainder` | till | A second charge for the shortfall. |
 
 ## The subaddress pool
 
