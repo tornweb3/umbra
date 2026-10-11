@@ -1,6 +1,7 @@
 // Invoice creation, shared by POST /api/invoices and the Shopify bridge.
 import { query } from "./db.js";
 import { walletRpc, withWallet } from "./walletRpc.js";
+import { withClaim } from "./subaddresses.js";
 import { atomicFromXmr } from "./money.js";
 import { getXmrRate, isSupportedCurrency, SUPPORTED_CURRENCIES } from "./rates.js";
 
@@ -40,9 +41,23 @@ export interface CreatedInvoice {
   expires_at: string;
 }
 
+export interface CreateOptions {
+  /**
+   * Take the subaddress from the pre-minted pool instead of minting one.
+   *
+   * Required for anything an anonymous visitor can trigger: minting inline
+   * takes the global wallet lock, so a public page that did it per visitor
+   * would stall the merchant's own chain scanner. An empty pool raises
+   * PoolEmptyError, which routes turn into a 503, rather than queueing behind
+   * the lock.
+   */
+  pool?: boolean;
+}
+
 export async function createInvoice(
   m: { id: string; wallet_name: string; wallet_ready_at?: unknown },
-  input: InvoiceInput
+  input: InvoiceInput,
+  opts: CreateOptions = {}
 ): Promise<CreatedInvoice> {
   // Minting a subaddress needs the wallet file the worker creates after
   // signup. Checked before any rate lookup so nothing is quoted in vain.
@@ -84,6 +99,42 @@ export async function createInvoice(
   if (!Number.isInteger(expiresMin) || expiresMin < 5 || expiresMin > 1440)
     throw new InvoiceInputError("expires_in_minutes must be an integer between 5 and 1440");
 
+  const params = (subaddress: string, subaddrIndex: number) => [
+    m.id,
+    amountAtomic.toString(),
+    fiat?.amount ?? null,
+    fiat?.currency ?? null,
+    fiat?.rate ?? null,
+    description ?? "",
+    subaddress,
+    subaddrIndex,
+    (return_url as string) ?? null,
+    metadata ? JSON.stringify(metadata) : null,
+    expiresMin,
+  ];
+  const INSERT = `INSERT INTO invoices (merchant_id, amount_atomic, price_amount, price_currency, rate, description, subaddress, subaddr_index, return_url, metadata, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now() + make_interval(mins => $11))
+     RETURNING id, status, expires_at`;
+  const shape = (row: any, subaddress: string): CreatedInvoice => ({
+    id: row.id,
+    subaddress,
+    amountAtomic,
+    fiat,
+    status: row.status,
+    return_url: (return_url as string) ?? null,
+    metadata: (metadata as Record<string, unknown>) ?? null,
+    expires_at: row.expires_at,
+  });
+
+  if (opts.pool) {
+    // Claim and insert in one transaction: separately, a failed insert would
+    // leak a claimed row and burn an address for nothing.
+    return withClaim(m.id, async (client, claimed) => {
+      const { rows } = await client.query(INSERT, params(claimed.subaddress, claimed.subaddr_index));
+      return shape(rows[0], claimed.subaddress);
+    });
+  }
+
   const sub = await withWallet(m.wallet_name, async () => {
     const created = await walletRpc<{ address: string; address_index: number }>("create_address", {
       account_index: 0,
@@ -96,32 +147,6 @@ export async function createInvoice(
     return created;
   });
 
-  const { rows } = await query(
-    `INSERT INTO invoices (merchant_id, amount_atomic, price_amount, price_currency, rate, description, subaddress, subaddr_index, return_url, metadata, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now() + make_interval(mins => $11))
-     RETURNING id, status, expires_at`,
-    [
-      m.id,
-      amountAtomic.toString(),
-      fiat?.amount ?? null,
-      fiat?.currency ?? null,
-      fiat?.rate ?? null,
-      description ?? "",
-      sub.address,
-      sub.address_index,
-      (return_url as string) ?? null,
-      metadata ? JSON.stringify(metadata) : null,
-      expiresMin,
-    ]
-  );
-  return {
-    id: rows[0].id,
-    subaddress: sub.address,
-    amountAtomic,
-    fiat,
-    status: rows[0].status,
-    return_url: (return_url as string) ?? null,
-    metadata: (metadata as Record<string, unknown>) ?? null,
-    expires_at: rows[0].expires_at,
-  };
+  const { rows } = await query(INSERT, params(sub.address, sub.address_index));
+  return shape(rows[0], sub.address);
 }

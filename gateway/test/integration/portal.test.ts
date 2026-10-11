@@ -9,6 +9,7 @@
 // installed.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool, query } from "../../src/db.js";
+import { purgeMerchant } from "./helpers.js";
 import {
   authenticate,
   countPortalUsers,
@@ -52,7 +53,7 @@ describe.skipIf(!live)("portal sessions against a real database", () => {
   });
 
   afterAll(async () => {
-    if (merchantId) await query(`DELETE FROM merchants WHERE id = $1`, [merchantId]);
+    if (merchantId) await purgeMerchant(merchantId);
     await pool.end().catch(() => {});
   });
 

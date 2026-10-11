@@ -13,6 +13,11 @@ export default defineConfig({
       // without it they skip, so `npm test` needs nothing installed.
       DATABASE_URL:
         process.env.TEST_DATABASE_URL ?? "postgres://test:test@127.0.0.1:5432/does_not_connect",
+      // Unit tests mock the wallet client entirely. The integration tests that
+      // need a wallet start tools/wallet-mock.mjs on this port themselves, so
+      // pointing at it unconditionally is harmless either way.
+      WALLET_RPC_URL: "http://127.0.0.1:4201/json_rpc",
+      DAEMON_RPC_URL: "http://127.0.0.1:4201/daemon/json_rpc",
     },
   },
 });

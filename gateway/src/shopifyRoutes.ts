@@ -7,7 +7,8 @@ import { merchant, requireAuth, UUID_RE } from "./http.js";
 import { when } from "./ui/components.js";
 import { html, safeUrl, SafeHtml } from "./ui/html.js";
 import { layout } from "./ui/layout.js";
-import { rateLimit, serverError } from "./security.js";
+import { orderLookupLimit, payLinkLimit } from "./limits.js";
+import { serverError } from "./security.js";
 import {
   adminGraphql,
   cancelOrder,
@@ -68,11 +69,6 @@ export async function shopifyWebhookHandler(req: express.Request, res: express.R
     res.status(500).end();
   }
 }
-
-// The order-number lookup is the one buyer route where a guessed input
-// (sequential order numbers) could enumerate orders, so it is the tightest.
-const payLimit = rateLimit({ windowMs: 60_000, max: 30 });
-const lookupLimit = rateLimit({ windowMs: 60_000, max: 20, message: "too many attempts, please wait a minute" });
 
 const page = (title: string, body: SafeHtml): string => layout({ title, body });
 
@@ -203,7 +199,7 @@ export function mountShopifyRoutes(app: express.Express, baseUrl: string): void 
 
   // Buyer pay link from the order confirmation email. The order id is
   // Shopify's system-wide id, not the store's short sequential number.
-  app.get("/shopify/pay/:shop/:orderId", payLimit, async (req, res) => {
+  app.get("/shopify/pay/:shop/:orderId", payLinkLimit, async (req, res) => {
     try {
       const shop = req.params.shop.toLowerCase();
       const store = SHOP_DOMAIN_RE.test(shop) ? await loadStoreByShop(shop) : null;
@@ -217,7 +213,7 @@ export function mountShopifyRoutes(app: express.Express, baseUrl: string): void 
   });
 
   // Fallback for buyers without the email: look an order up by its number.
-  app.get("/shopify/pay/:shop", lookupLimit, async (req, res) => {
+  app.get("/shopify/pay/:shop", orderLookupLimit, async (req, res) => {
     try {
       const shop = req.params.shop.toLowerCase();
       const store = SHOP_DOMAIN_RE.test(shop) ? await loadStoreByShop(shop) : null;

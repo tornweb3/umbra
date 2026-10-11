@@ -244,6 +244,31 @@ Errors are `{"error": "..."}` with a status that says whose problem it is.
 | `500` | Our fault. The body carries a `reference` that appears in the server log. |
 | `503` | Temporary: the account's view-only wallet is still being built. `Retry-After` says when to come back. |
 
+## The subaddress pool
+
+Minting a subaddress takes the global wallet lock, because every wallet-rpc
+call pays a full open / work / close cycle. That is fine for an API caller
+holding a key, who is rate limited and known. It is not fine for anything an
+anonymous visitor can trigger, which would let a stranger stall the merchant's
+own chain scanner.
+
+So the worker pre-mints addresses in batches and those paths claim one instead
+of minting. The pool is off until something needs it (`target: 0`).
+
+### `GET /api/me/pool`
+
+```json
+{ "target": 100, "free": 94, "total": 118 }
+```
+
+`free` falling toward zero means the worker is not keeping up, or is not
+running. Routes that need the pool answer `503` with `Retry-After` when it is
+empty, rather than queueing behind the lock.
+
+### `PATCH /api/me/pool`
+
+Body `{"target": 100}`, 0 to 10000. Set 0 to switch the pool off.
+
 ## Health
 
 `GET /healthz` reports database status. `?deep=1` also checks wallet-rpc and

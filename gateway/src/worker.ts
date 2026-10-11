@@ -14,6 +14,7 @@ import { hmacSign } from "./crypto.js";
 import { walletRpc, withWallet } from "./walletRpc.js";
 import { xmrFromAtomic } from "./money.js";
 import { provisionPendingWallets } from "./merchants.js";
+import { refillPools, sweepClaimedPool } from "./subaddresses.js";
 import { sweepExpiredSessions } from "./portal/session.js";
 import { processShopify } from "./shopify.js";
 import { assertSafeWebhookUrl } from "./security.js";
@@ -254,6 +255,8 @@ async function heartbeat(startedAt: number, error: string | null): Promise<void>
   ).catch((e) => console.error(`heartbeat failed: ${e.message}`));
 }
 
+let passes = 0;
+
 async function main(): Promise<void> {
   console.log(`worker started: poll=${POLL_MS}ms confirmations=${CONFIRMATIONS}`);
   while (!stopping) {
@@ -261,6 +264,7 @@ async function main(): Promise<void> {
     let failure: string | null = null;
     try {
       await provisionPendingWallets();
+      await refillPools();
       await sweepExpiredSessions();
       await expireInvoices();
       await scanMerchants();
@@ -271,6 +275,8 @@ async function main(): Promise<void> {
       console.error(`worker loop error: ${e.message}`);
     }
     await heartbeat(startedAt, failure);
+    // Housekeeping that does not need to run every fifteen seconds.
+    if (++passes % 200 === 0) await sweepClaimedPool().catch((e) => console.error(`pool sweep failed: ${e.message}`));
     if (stopping) break;
     await sleep(POLL_MS);
   }

@@ -12,7 +12,8 @@ import {
 } from "../invoiceQueries.js";
 import { xmrFromAtomic } from "../money.js";
 import { SUPPORTED_CURRENCIES } from "../rates.js";
-import { rateLimit, serverError } from "../security.js";
+import { merchantActionLimit } from "../limits.js";
+import { serverError } from "../security.js";
 import { statusBadge, timestamp, when } from "../ui/components.js";
 import { html, safeUrl, type SafeHtml } from "../ui/html.js";
 import { layout } from "../ui/layout.js";
@@ -207,9 +208,6 @@ ${when(
 export function mountInvoiceRoutes(app: express.Express, opts: InvoiceRoutesOptions): void {
   const session = requireSession();
   const csrf = requireCsrf(opts.baseUrl);
-  // Each invoice takes the wallet lock to mint a subaddress, so a
-  // double-clicked form must not queue two wallet opens.
-  const createLimit = rateLimit({ windowMs: 60_000, max: 20, key: (req) => portal(req).merchant.id });
 
   app.get("/portal/invoices", session, async (req, res) => {
     try {
@@ -227,7 +225,7 @@ export function mountInvoiceRoutes(app: express.Express, opts: InvoiceRoutesOpti
     res.send(newPage("", {}, portal(req).csrf));
   });
 
-  app.post("/portal/invoices", session, csrf, createLimit, async (req, res) => {
+  app.post("/portal/invoices", session, csrf, merchantActionLimit, async (req, res) => {
     const body = (req.body ?? {}) as Record<string, string>;
     const keep = {
       amount_xmr: body.amount_xmr ?? "",

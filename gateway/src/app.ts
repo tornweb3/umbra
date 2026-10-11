@@ -10,16 +10,17 @@ import { xmrFromAtomic } from "./money.js";
 import { merchant, requireAuth, UUID_RE } from "./http.js";
 import { createInvoice, InvoiceInputError, WalletNotReadyError } from "./invoices.js";
 import { createMerchant, keyState, MAX_GRACE_MINUTES, revokePreviousKey, rotateApiKey } from "./merchants.js";
+import { poolState, setPoolTarget } from "./subaddresses.js";
 import { INVOICE_SELECT, INVOICE_STATUSES, invoiceJson, listInvoices } from "./invoiceQueries.js";
 import { mountCheckoutRoutes } from "./checkout.js";
 import { mountPortalRoutes } from "./portal/index.js";
 import { securityHeaders } from "./headers.js";
 import { mountAssetRoutes } from "./ui/layout.js";
 import { mountShopifyRoutes, shopifyWebhookHandler } from "./shopifyRoutes.js";
+import { merchantLimit, publicLimit, signupLimit } from "./limits.js";
 import {
   assertSafeWebhookUrl,
   configureProxyTrust,
-  rateLimit,
   requireSignupToken,
   serverError,
   UnsafeUrlError,
@@ -71,12 +72,6 @@ export function createApp({ baseUrl, network, portal }: AppOptions): express.Exp
   mountAssetRoutes(app);
   // index: false so a file in public/ can never shadow GET / below.
   app.use(express.static(path.join(__dirname, "..", "public"), { index: false }));
-
-  // Buyer-facing routes are polled by checkout pages, so they get room to
-  // breathe; merchant routes are keyed by account rather than address.
-  const publicLimit = rateLimit({ windowMs: 60_000, max: 120 });
-  const merchantLimit = rateLimit({ windowMs: 60_000, max: 60, key: (req) => merchant(req).id });
-  const signupLimit = rateLimit({ windowMs: 3_600_000, max: 5, message: "too many signup attempts" });
 
   // Liveness and readiness for process managers and compose healthchecks.
   // ?deep=1 also pokes the wallet and daemon, which is slower: use it for
@@ -321,6 +316,28 @@ export function createApp({ baseUrl, network, portal }: AppOptions): express.Exp
   app.get("/api/me/key", requireAuth, async (req, res) => {
     try {
       res.json(await keyState(merchant(req).id));
+    } catch (e) {
+      serverError(res, e, `${req.method} ${req.path}`);
+    }
+  });
+
+  // The pool exists so anonymous mints never take the wallet lock. Reading it
+  // is how an operator sees whether the worker is keeping up.
+  app.get("/api/me/pool", requireAuth, async (req, res) => {
+    try {
+      res.json(await poolState(merchant(req).id));
+    } catch (e) {
+      serverError(res, e, `${req.method} ${req.path}`);
+    }
+  });
+
+  app.patch("/api/me/pool", requireAuth, async (req, res) => {
+    try {
+      const target = Number((req.body ?? {}).target);
+      if (!Number.isFinite(target) || target < 0 || target > 10_000)
+        return res.status(400).json({ error: "target must be between 0 and 10000" });
+      await setPoolTarget(merchant(req).id, target);
+      res.json(await poolState(merchant(req).id));
     } catch (e) {
       serverError(res, e, `${req.method} ${req.path}`);
     }

@@ -197,9 +197,6 @@ Everything is environment variables, documented in
 - The console is one account per gateway: one merchant, one login. Several
   merchants on one gateway is an API-only arrangement today.
 - The Shopify connection is managed through the API rather than the console.
-- **No real mainnet payment has been processed yet.** Everything here has been
-  exercised against stagenet and against mocks; the first mainnet settlement
-  happens when the dedicated node is up.
 
 ## Development
 
