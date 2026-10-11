@@ -252,3 +252,19 @@ describe("hashing used by the claim flow", () => {
     expect(createHash("sha256").update(key).digest("hex")).toHaveLength(64);
   });
 });
+
+describe("PORTAL_DISABLED", () => {
+  it("serves no console at all, and says so at the root", async () => {
+    db({ users: 1 });
+    const a = createApp({ baseUrl: "https://pay.example.com", network: "stagenet", portal: false });
+    const root = await request(a).get("/");
+    expect(root.status).toBe(200);
+    expect(root.body).toMatchObject({ console: "disabled", health: "/healthz" });
+
+    for (const path of ["/portal", "/portal/login", "/portal/setup", "/portal/invoices", "/portal/settings", "/portal/status"]) {
+      expect((await request(a).get(path)).status, path).toBe(404);
+    }
+    // The API is untouched by that switch.
+    expect((await request(a).get("/api/me")).status).toBe(401);
+  });
+});

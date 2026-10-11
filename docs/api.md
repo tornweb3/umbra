@@ -11,6 +11,11 @@ Two routes are deliberately public, because the buyer needs them and has no
 key: `GET /api/invoices/:id` and the checkout page. The invoice id is the
 capability, so treat the URL as a secret.
 
+Everything under `/api/` authenticates with that Bearer key and **only** with
+it. The console's session cookie is not accepted here, deliberately: if it
+were, every route below would be reachable from any website a logged-in
+merchant happened to be visiting.
+
 ## Accounts
 
 ### `POST /api/merchants`

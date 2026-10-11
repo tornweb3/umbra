@@ -35,7 +35,16 @@ npx tsc --noEmit  # type check
 npm run build     # make sure it compiles
 ```
 
-CI runs those plus a clean-database migration run, PHP syntax checks on the
+The unit suite mocks the database, so it runs anywhere and executes no SQL. The
+tests under `test/integration/` do execute SQL and skip unless you point them
+at a database:
+
+```bash
+TEST_DATABASE_URL=postgres://umbra:umbra@127.0.0.1:5432/umbra npm test
+```
+
+If you touch any query, run them. CI does, in the job that already starts a
+Postgres, alongside a clean-database migration run, PHP syntax checks on the
 plugin, and a Docker build.
 
 ### Testing without coins
@@ -58,6 +67,22 @@ database, which is enough to exercise everything downstream of detection.
   Never use floats for money.
 - Never log view keys, API keys, webhook secrets or the master key.
 - Verify signatures before parsing a body, not after.
+- **Never concatenate HTML by hand.** Interpolate through the `html` tagged
+  template in `src/ui/html.ts`, which escapes by default, and put any URL that
+  came from a merchant, a buyer or a platform through `safeUrl` before it goes
+  in an `href`: escaping makes a value safe as text and says nothing at all
+  about `javascript:`.
+- **No inline `<script>`.** Page data reaches the browser through escaped
+  `data-` attributes and behaviour lives in `/assets/*.js`. `JSON.stringify`
+  does not escape `</script>`, so one interpolated string ends the block.
+- **`requireAuth` and `requireSession` are not interchangeable.** The API
+  authenticates with a Bearer key; the console authenticates with a session
+  cookie. If a cookie ever worked on `/api/*`, every API route would become
+  reachable from any site a logged-in merchant happens to visit. There is a
+  test whose only job is to keep that false.
+- **Wrap async route handlers in `route()`** unless they catch for themselves.
+  Express 4 does not catch a rejected handler: the request hangs instead of
+  answering, which is worse than an error page.
 
 ## Adding a store integration
 

@@ -36,6 +36,27 @@ Umbra holds **view keys only**. Compromising it exposes payment history and
 lets an attacker see incoming payments. It does not let them spend, because
 the spend key never reaches the system.
 
+### Two credentials, and what each one can do
+
+The API key is a machine credential: it is pasted into shop plugins and
+whatever else the merchant runs. The console password is a human credential
+and gets a revocable session cookie. They are never interchangeable, and in
+particular **a session cookie does not authenticate `/api/*`**: if it did,
+every API route would be reachable from any site a logged-in merchant visited.
+
+A stolen **session cookie** can read the merchant's invoices, create an
+invoice, and requeue a webhook delivery. It cannot change the webhook URL,
+rotate the webhook secret, rotate the API key or change the password, because
+each of those asks for the password again and only accepts it within the last
+ten minutes. Logging out, or changing the password, revokes it server-side.
+
+A stolen **API key** can create invoices and read invoice history. Rotate it
+with `POST /api/me/rotate-key`, or from the console, which keeps the old key
+alive for a window you choose so a live shop does not break mid-rotation and
+tells you whether anything is still using it.
+
+Neither can move funds. Umbra holds a view key.
+
 What a compromise does put at risk:
 
 - **The master key plus the database** together reveal every stored view key,

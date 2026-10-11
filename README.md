@@ -35,8 +35,10 @@ customer  ──pays──▶  subaddress (your wallet)
   confirmation threshold, each signed with HMAC-SHA256 and retried with backoff
   until your server answers.
 - **A hosted checkout page** with a QR code, or build your own from the API.
-- **A merchant console in the browser**, served by the gateway itself, so setting
-  it up needs no terminal.
+- **A merchant console in the browser**, served by the gateway itself: set the
+  gateway up, read your invoices and their webhook delivery log, rotate
+  credentials, and see whether the worker and your node are healthy. No
+  terminal, no second service.
 - **Store integrations**: WooCommerce (a plugin you install) and Shopify (via a
   manual payment method).
 
@@ -167,6 +169,8 @@ Everything is environment variables, documented in
 | `CONFIRMATIONS` | Confirmations before a payment is final. Default 10. |
 | `TRUST_PROXY` | Set behind a reverse proxy so rate limits see the real client. |
 | `ALLOW_PRIVATE_WEBHOOKS` | Leave off. It disables the check that stops webhooks reaching inside your network. |
+| `PORTAL_DISABLED` | Set to `1` for an API-only deployment, and the console is not served at all. |
+| `SESSION_TTL_HOURS` | Console session idle timeout, 12 by default, with a 7-day absolute cap. |
 
 ## Running it safely
 
@@ -190,6 +194,12 @@ Everything is environment variables, documented in
   payment above roughly 9000 XMR would lose precision.
 - Refunds are something you send yourself, from your own wallet. Umbra never
   holds funds and cannot refund on your behalf.
+- The console is one account per gateway: one merchant, one login. Several
+  merchants on one gateway is an API-only arrangement today.
+- The Shopify connection is managed through the API rather than the console.
+- **No real mainnet payment has been processed yet.** Everything here has been
+  exercised against stagenet and against mocks; the first mainnet settlement
+  happens when the dedicated node is up.
 
 ## Development
 
@@ -203,6 +213,14 @@ npm test           # unit tests
 
 `gateway/tools/` holds a mock Shopify store and a webhook receiver, so the
 integrations can be exercised without a real store or real coins.
+
+The unit tests mock the database and run anywhere. The tests in
+`gateway/test/integration/` execute real SQL and skip unless you give them a
+database:
+
+```bash
+TEST_DATABASE_URL=postgres://umbra:umbra@127.0.0.1:5432/umbra npm test
+```
 
 ## Support the project
 

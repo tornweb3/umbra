@@ -36,11 +36,18 @@ export interface AppOptions {
   baseUrl: string;
   /** mainnet | stagenet | testnet. Decides which address prefix signup accepts. */
   network: string;
+  /**
+   * Serve the merchant console. Defaults to on, and to off when
+   * PORTAL_DISABLED=1: an operator running this purely as an API for several
+   * merchants has no use for a login page on it.
+   */
+  portal?: boolean;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export function createApp({ baseUrl, network }: AppOptions): express.Express {
+export function createApp({ baseUrl, network, portal }: AppOptions): express.Express {
+  const portalEnabled = portal ?? process.env.PORTAL_DISABLED !== "1";
   const NETWORK = network.toLowerCase();
   const ADDRESS_PREFIX_CHAR = ADDRESS_PREFIX[NETWORK];
   if (!ADDRESS_PREFIX_CHAR) {
@@ -322,11 +329,17 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
   mountCheckoutRoutes(app, publicLimit);
 
   mountShopifyRoutes(app, baseUrl);
-  mountPortalRoutes(app, { baseUrl, network: NETWORK });
 
-  // The front door. A gateway with no account sends you to setup, which is
-  // what makes it usable without a terminal.
-  app.get("/", (_req, res) => res.redirect(302, "/portal"));
+  if (portalEnabled) {
+    mountPortalRoutes(app, { baseUrl, network: NETWORK });
+    // The front door. A gateway with no account sends you to setup, which is
+    // what makes it usable without a terminal.
+    app.get("/", (_req, res) => res.redirect(302, "/portal"));
+  } else {
+    app.get("/", (_req, res) =>
+      res.json({ service: "umbra", console: "disabled", health: "/healthz", docs: "https://github.com/tornweb3/umbra" })
+    );
+  }
 
   // Last: anything a handler threw or passed to next() becomes a logged 500
   // with a reference, rather than Express's default stack page.
