@@ -99,7 +99,22 @@ checkout page polls.
 
 ### `GET /api/me/invoices`
 
-Every invoice on your account, newest first.
+Your invoices, newest first. Paged: the body is still a plain array, and the
+cursor for the next page arrives in a `Link` header.
+
+| Parameter | Notes |
+| --- | --- |
+| `limit` | 1 to 500. Default 100. |
+| `before` | An invoice id: returns the page older than it. |
+| `status` | One of `pending`, `detected`, `confirmed`, `expired`. |
+| `q` | Matches a description, or the start of an invoice id. |
+
+```
+Link: <https://pay.example.com/api/me/invoices?limit=100&before=0c0766e8-...>; rel="next"
+```
+
+No header means there is nothing older. Paging is keyset, not offset, so rows
+are never skipped or repeated as new invoices arrive while you read.
 
 ### `GET /api/invoices/:id/webhooks`
 

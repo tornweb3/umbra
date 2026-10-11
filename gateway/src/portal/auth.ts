@@ -20,6 +20,7 @@ import {
   startSession,
 } from "./session.js";
 import { readCookie } from "../cookies.js";
+import { route } from "../http.js";
 
 export interface AuthOptions {
   baseUrl: string;
@@ -62,16 +63,16 @@ export function mountAuthRoutes(app: express.Express, opts: AuthOptions): void {
   const loginLimit = rateLimit({ windowMs: 900_000, max: 10, message: "too many attempts, wait a few minutes" });
   const resetLimit = rateLimit({ windowMs: 3_600_000, max: 10, message: "too many attempts" });
 
-  app.get("/portal/login", loginLimit, async (req, res) => {
+  app.get("/portal/login", loginLimit, route(async (req, res) => {
     // Nothing to log into yet: send a fresh install to setup instead.
     if ((await countPortalUsers()) === 0) return res.redirect(303, "/portal/setup");
     // Already logged in: do not make them type it again.
     const existing = readCookie(req, COOKIE_NAME);
     if (existing && (await loadSession(existing))) return res.redirect(303, "/portal");
     res.send(loginPage(opts));
-  });
+  }));
 
-  app.post("/portal/login", loginLimit, async (req, res) => {
+  app.post("/portal/login", loginLimit, route(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, string>;
     const username = normaliseUsername(body.username);
     const password = typeof body.password === "string" ? body.password : "";
@@ -90,7 +91,7 @@ export function mountAuthRoutes(app: express.Express, opts: AuthOptions): void {
     const session = await startSession(result.userId, req);
     setSessionCookie(req, res, opts.baseUrl, session.token, session.expiresAt);
     res.redirect(303, "/portal");
-  });
+  }));
 
   app.get("/portal/reset", resetLimit, (req, res) => {
     const token = String(req.query.token ?? "");
@@ -98,7 +99,7 @@ export function mountAuthRoutes(app: express.Express, opts: AuthOptions): void {
     res.send(resetPage(token));
   });
 
-  app.post("/portal/reset", resetLimit, async (req, res) => {
+  app.post("/portal/reset", resetLimit, route(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, string>;
     const token = String(body.token ?? "");
     if (!token) return res.status(400).send(resetPage("", "That link is incomplete."));
@@ -120,5 +121,5 @@ export function mountAuthRoutes(app: express.Express, opts: AuthOptions): void {
     const session = await startSession(userId, req);
     setSessionCookie(req, res, opts.baseUrl, session.token, session.expiresAt);
     res.redirect(303, "/portal");
-  });
+  }));
 }

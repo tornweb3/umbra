@@ -1,11 +1,16 @@
 // The merchant console. Mounted under /portal, session-authenticated, and
 // strictly separate from /api/*: see requireSession for why that matters.
 import type express from "express";
+import { route } from "../http.js";
+import { query } from "../db.js";
+import { xmrFromAtomic } from "../money.js";
 import { html } from "../ui/html.js";
 import { layout } from "../ui/layout.js";
 import { statusBadge, timestamp, when } from "../ui/components.js";
 import { mountAuthRoutes } from "./auth.js";
 import { portalHeaders } from "./headers.js";
+import { mountInvoiceRoutes } from "./invoices.js";
+import { portalNav } from "./nav.js";
 import { mountSetupRoutes } from "./setup.js";
 import { clearSessionCookie, endSession, portal, requireCsrf, requireSession } from "./session.js";
 
@@ -14,24 +19,33 @@ export interface PortalOptions {
   network: string;
 }
 
-export function portalNav(active: string): ReturnType<typeof html> {
-  const link = (href: string, label: string, key: string) =>
-    html`<a href="${href}" aria-current="${key === active ? "page" : "false"}">${label}</a>`;
-  return html`${link("/portal", "Overview", "overview")}`;
-}
-
 export function mountPortalRoutes(app: express.Express, opts: PortalOptions): void {
   app.use("/portal", portalHeaders());
   mountSetupRoutes(app, opts);
   mountAuthRoutes(app, opts);
+  mountInvoiceRoutes(app, { baseUrl: opts.baseUrl });
 
   const session = requireSession();
   const csrf = requireCsrf(opts.baseUrl);
 
-  app.get("/portal", session, (req, res) => {
+  app.get("/portal", session, route(async (req, res) => {
     const p = portal(req);
     const m = p.merchant;
     const provisioning = !m.wallet_ready_at;
+
+    // Two small queries rather than one join: counting invoices across a join
+    // to payments would count an invoice once per payment.
+    const counts = await query<{ status: string; n: number }>(
+      `SELECT status, count(*)::int AS n FROM invoices WHERE merchant_id = $1 GROUP BY status`,
+      [m.id]
+    );
+    const by = (s: string) => counts.rows.find((r) => r.status === s)?.n ?? 0;
+    const received = await query<{ total: string }>(
+      `SELECT COALESCE(SUM(p.amount_atomic), 0)::text AS total
+       FROM payments p JOIN invoices i ON i.id = p.invoice_id
+       WHERE i.merchant_id = $1 AND p.confirmed_at IS NOT NULL AND p.confirmed_at > now() - interval '30 days'`,
+      [m.id]
+    );
     const body = html`<h1>${m.name}</h1>
 <p class="muted">Signed in as ${p.username}</p>
 
@@ -52,6 +66,13 @@ ${when(
 confirms. That is fine if you use the hosted checkout page and poll the API.</div>`
 )}
 
+<div class="stats">
+<div class="stat"><span class="n">${xmrFromAtomic(BigInt(received.rows[0]?.total ?? "0"))}</span><span class="l">XMR received, 30 days</span></div>
+<div class="stat"><span class="n">${by("confirmed")}</span><span class="l">confirmed</span></div>
+<div class="stat"><span class="n">${by("detected")}</span><span class="l">awaiting confirmations</span></div>
+<div class="stat"><span class="n">${by("pending")}</span><span class="l">awaiting payment</span></div>
+</div>
+
 <div class="card left">
 <h2>Account</h2>
 <table>
@@ -62,22 +83,23 @@ confirms. That is fine if you use the hosted checkout page and poll the API.</di
 </table>
 </div>
 
-<p class="muted">Invoices, settings and the Shopify connection arrive in the next releases. The
-API is fully usable today: see <span class="mono">docs/api.md</span>.</p>
+<p><a class="button" href="/portal/invoices">Invoices</a></p>
+<p class="muted">Settings, credential rotation and the Shopify connection arrive in the next
+releases. The API does all of it today: see <span class="mono">docs/api.md</span>.</p>
 
 <form method="post" action="/portal/logout">
 <input type="hidden" name="_csrf" value="${p.csrf}">
 <button class="secondary" type="submit">Log out</button>
 </form>`;
     res.send(layout({ title: m.name, body, chrome: "portal", nav: portalNav("overview") }));
-  });
+  }));
 
   // POST only, so no <img src> can trigger it, and CSRF-checked like any
   // other mutation. Registered here rather than in auth.ts because this is
   // where the session and token middleware live.
-  app.post("/portal/logout", session, csrf, async (req, res) => {
+  app.post("/portal/logout", session, csrf, route(async (req, res) => {
     await endSession(portal(req).token);
     clearSessionCookie(res);
     res.redirect(303, "/portal/login");
-  });
+  }));
 }

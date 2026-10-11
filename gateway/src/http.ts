@@ -1,6 +1,7 @@
 // Request helpers shared by the API server and the Shopify routes.
 import type express from "express";
 import { query } from "./db.js";
+import { serverError } from "./security.js";
 import { sha256Hex } from "./crypto.js";
 
 export function escapeHtml(s: unknown): string {
@@ -52,3 +53,17 @@ export async function requireAuth(
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const merchant = (req: express.Request): Merchant => (req as any).merchant;
+
+/**
+ * Wrap an async route.
+ *
+ * Express 4 does not catch a rejected promise from a handler: the rejection
+ * becomes an unhandled rejection and the request simply never answers. A
+ * hanging request is worse than an error page, so every async handler that
+ * does not catch for itself goes through here.
+ */
+export function route(fn: express.RequestHandler): express.RequestHandler {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch((e) => serverError(res, e, `${req.method} ${req.path}`));
+  };
+}

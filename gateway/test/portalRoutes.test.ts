@@ -49,6 +49,12 @@ function db(opts: { users?: number; session?: boolean } = {}) {
         rowCount: 1,
       };
     }
+    if (text.includes("FROM invoices") && text.includes("GROUP BY status")) {
+      return { rows: [{ status: "confirmed", n: 2 }, { status: "pending", n: 1 }], rowCount: 2 };
+    }
+    if (text.includes("FROM payments p JOIN invoices i")) {
+      return { rows: [{ total: "1500000000000" }], rowCount: 1 };
+    }
     // The Bearer path: no merchant matches, so /api/* stays 401.
     return { rows: [], rowCount: 0 };
   });
@@ -142,6 +148,8 @@ describe("the console", () => {
     query.mockImplementation(async (sql: string) => {
       const text = String(sql);
       if (text.includes("count(*)")) return { rows: [{ n: "1" }], rowCount: 1 };
+      if (text.includes("GROUP BY status")) return { rows: [], rowCount: 0 };
+      if (text.includes("FROM payments p JOIN invoices i")) return { rows: [{ total: "0" }], rowCount: 1 };
       if (text.includes("FROM portal_sessions s")) {
         return {
           rows: [

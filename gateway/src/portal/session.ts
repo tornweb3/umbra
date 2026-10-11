@@ -371,15 +371,20 @@ export const portal = (req: express.Request): SessionContext => (req as any).por
  */
 export function requireSession(): express.RequestHandler {
   return async (req, res, next) => {
-    const token = readCookie(req, COOKIE_NAME);
-    const context = token ? await loadSession(token) : null;
-    if (!context) {
-      clearSessionCookie(res);
-      if (req.method === "GET") return res.redirect(303, "/portal/login");
-      return res.status(401).send("Your session has expired. Log in again.");
+    try {
+      const token = readCookie(req, COOKIE_NAME);
+      const context = token ? await loadSession(token) : null;
+      if (!context) {
+        clearSessionCookie(res);
+        if (req.method === "GET") return res.redirect(303, "/portal/login");
+        return res.status(401).send("Your session has expired. Log in again.");
+      }
+      (req as any).portal = context;
+      next();
+    } catch (e) {
+      // A database hiccup here must not hang the request.
+      next(e);
     }
-    (req as any).portal = context;
-    next();
   };
 }
 

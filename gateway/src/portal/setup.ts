@@ -9,6 +9,7 @@ import type express from "express";
 import { query } from "../db.js";
 import { sha256Hex } from "../crypto.js";
 import { readCookie } from "../cookies.js";
+import { route } from "../http.js";
 import { createMerchant } from "../merchants.js";
 import { assertSafeWebhookUrl, isPrivateAddress, rateLimit, UnsafeUrlError } from "../security.js";
 import { html } from "../ui/html.js";
@@ -181,16 +182,16 @@ answer 503 until it is ready, which usually takes a few minutes.</p>
 export function mountSetupRoutes(app: express.Express, opts: SetupOptions): void {
   const setupLimit = rateLimit({ windowMs: 3_600_000, max: 20, message: "too many setup attempts" });
 
-  app.get("/portal/setup", setupLimit, async (req, res) => {
+  app.get("/portal/setup", setupLimit, route(async (req, res) => {
     const users = await countPortalUsers();
     if (users > 0) return res.redirect(303, "/portal/login");
     if (!setupAllowed(app, req)) return res.status(200).send(lockedPage(opts, false));
     const nonce = plantNonce(res, isSecureRequest(req, opts.baseUrl));
     const mode = req.query.mode === "claim" ? "claim" : "create";
     res.send(setupForm(opts, nonce, mode, "", { token: String(req.query.token ?? "") }));
-  });
+  }));
 
-  app.post("/portal/setup", setupLimit, async (req, res) => {
+  app.post("/portal/setup", setupLimit, route(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, string>;
     const mode = body.mode === "claim" ? "claim" : "create";
     const users = await countPortalUsers();
@@ -263,5 +264,5 @@ export function mountSetupRoutes(app: express.Express, opts: SetupOptions): void
     // Rendered in the body of this POST: a redirect would put the key in a
     // query string, and a flash row would mean storing it.
     res.status(201).send(credentialsPage(created.apiKey, created.webhookSecret));
-  });
+  }));
 }

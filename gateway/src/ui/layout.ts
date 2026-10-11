@@ -22,6 +22,16 @@ body.u-minimal label { text-align: left; }
 body.u-minimal button { width: 100%; margin-top: 12px; }
 .err { color: #a34d2d; }
 .left { text-align: left; }
+.wrap { word-break: break-all; }
+.filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 18px; }
+.filters label { margin: 0; }
+.filters input, .filters select { width: auto; min-width: 160px; }
+.filters button { padding: 9px 16px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.stat { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.stat .n { display: block; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.stat .l { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; }
 .tabs { display: flex; justify-content: center; gap: 24px; font-size: 14px; padding: 14px 0; }
 .tabs a { color: var(--muted); text-decoration: none; }
 .tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; }

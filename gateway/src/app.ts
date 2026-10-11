@@ -10,7 +10,7 @@ import { xmrFromAtomic } from "./money.js";
 import { merchant, requireAuth, UUID_RE } from "./http.js";
 import { createInvoice, InvoiceInputError, WalletNotReadyError } from "./invoices.js";
 import { createMerchant } from "./merchants.js";
-import { INVOICE_SELECT, invoiceJson } from "./invoiceQueries.js";
+import { INVOICE_SELECT, INVOICE_STATUSES, invoiceJson, listInvoices } from "./invoiceQueries.js";
 import { mountCheckoutRoutes } from "./checkout.js";
 import { mountPortalRoutes } from "./portal/index.js";
 import { securityHeaders } from "./headers.js";
@@ -198,11 +198,24 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
 
   app.get("/api/me/invoices", requireAuth, async (req, res) => {
     try {
-      const { rows } = await query(
-        `${INVOICE_SELECT} WHERE i.merchant_id = $1 GROUP BY i.id ORDER BY i.created_at DESC`,
-        [merchant(req).id]
-      );
-      res.json(rows.map(invoiceJson));
+      const status = INVOICE_STATUSES.includes(String(req.query.status) as any) ? String(req.query.status) : undefined;
+      const before = typeof req.query.before === "string" && UUID_RE.test(req.query.before) ? req.query.before : undefined;
+      // Was unbounded, which is a memory and CPU risk on a busy merchant. The
+      // body stays an array so existing clients keep working; the cursor for
+      // the next page travels in a Link header.
+      const page = await listInvoices(query, merchant(req).id, {
+        status,
+        before,
+        q: typeof req.query.q === "string" ? req.query.q.slice(0, 100) : undefined,
+        limit: Number(req.query.limit) || 100,
+      });
+      if (page.nextBefore) {
+        const next = new URL(`${baseUrl}/api/me/invoices`);
+        for (const [k, v] of Object.entries(req.query)) if (typeof v === "string") next.searchParams.set(k, v);
+        next.searchParams.set("before", page.nextBefore);
+        res.setHeader("Link", `<${next.toString()}>; rel="next"`);
+      }
+      res.json(page.invoices);
     } catch (e) {
       serverError(res, e, `${req.method} ${req.path}`);
     }
@@ -276,6 +289,12 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
   // The front door. A gateway with no account sends you to setup, which is
   // what makes it usable without a terminal.
   app.get("/", (_req, res) => res.redirect(302, "/portal"));
+
+  // Last: anything a handler threw or passed to next() becomes a logged 500
+  // with a reference, rather than Express's default stack page.
+  app.use(((err, req, res, _next) => {
+    serverError(res, err, `${req.method} ${req.path}`);
+  }) as express.ErrorRequestHandler);
 
   return app;
 }

@@ -80,9 +80,30 @@ It prints a one-time URL, valid for an hour, and never a password. Setting the
 new password ends every other session, since a reset is how someone recovers
 from a compromise.
 
-## What is here so far
+## The pages
 
-The overview page: the account, its payout address, webhook URL and wallet
-state, with a banner when something needs attention. Invoices, settings,
-credential rotation and the Shopify connection are next; the API does all of it
-today, documented in [the API reference](api.md).
+**Overview.** What the account received in the last 30 days, how many invoices
+are confirmed, awaiting confirmations and awaiting payment, the payout address
+and webhook URL, and a banner when something needs attention: a wallet still
+being prepared, a wallet that failed to prepare, or no webhook URL configured.
+
+**Invoices.** Newest first, 25 to a page, filtered by status or by a search
+over descriptions and invoice ids. Paging is keyset, so nothing is skipped or
+repeated while you read.
+
+**One invoice.** Amounts due and received, the locked fiat rate, the
+subaddress, the checkout link, every payment with its transaction id and
+confirmations, and the webhook delivery log with a Redeliver button per row.
+Redelivery resets that delivery's attempt count so the worker picks it up on
+its next pass.
+
+The checkout link on that page is a capability: anyone holding it can see the
+invoice, so it is treated as a secret and the page says so.
+
+**New invoice.** Price in XMR or in one of the 12 fiat currencies, with the
+rate locked at creation. Creating an invoice mints a subaddress, which takes
+the wallet lock, so the form is rate limited per account and refuses while the
+wallet is still being prepared.
+
+Settings, credential rotation and the Shopify connection are next; the API does
+all of it today, documented in [the API reference](api.md).
