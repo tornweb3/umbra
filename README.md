@@ -97,6 +97,11 @@ curl -X POST https://pay.example.com/api/merchants \
 The response carries your API key and webhook secret **once**. Only a hash of
 the key is stored, so a lost key cannot be recovered.
 
+It returns straight away, but your view-only wallet is built by the worker on
+its next pass, because that call holds the wallet lock for minutes. Invoice
+creation answers `503` until it is ready. `webhook_url` is optional: leave it
+out if you only use the hosted checkout page.
+
 ## Using the API
 
 Create an invoice, send the buyer to `checkout_url`, settle on the webhook:

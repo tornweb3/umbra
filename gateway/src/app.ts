@@ -4,11 +4,12 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { query } from "./db.js";
-import { encrypt, newSecret, sha256Hex } from "./crypto.js";
-import { createViewOnlyWallet, daemonRpc, walletRpcVersion } from "./walletRpc.js";
+import { newSecret } from "./crypto.js";
+import { daemonRpc, walletRpcVersion } from "./walletRpc.js";
 import { xmrFromAtomic } from "./money.js";
 import { merchant, requireAuth, UUID_RE } from "./http.js";
-import { createInvoice, InvoiceInputError } from "./invoices.js";
+import { createInvoice, InvoiceInputError, WalletNotReadyError } from "./invoices.js";
+import { createMerchant } from "./merchants.js";
 import { INVOICE_SELECT, invoiceJson } from "./invoiceQueries.js";
 import { mountCheckoutRoutes } from "./checkout.js";
 import { securityHeaders } from "./headers.js";
@@ -111,13 +112,20 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
         });
       if (typeof view_key !== "string" || !VIEW_KEY_RE.test(view_key))
         return res.status(400).json({ error: "view_key must be 64 hex chars" });
-      if (typeof webhook_url !== "string")
-        return res.status(400).json({ error: "webhook_url must be an http(s) URL" });
-      try {
-        await assertSafeWebhookUrl(webhook_url);
-      } catch (e: any) {
-        if (e instanceof UnsafeUrlError) return res.status(400).json({ error: e.message });
-        throw e;
+      // Optional: a merchant using only the hosted checkout page has nowhere
+      // to deliver to, and the SSRF guard refuses the private URL they would
+      // otherwise invent.
+      let webhookUrl: string | null = null;
+      if (webhook_url !== undefined && webhook_url !== null && webhook_url !== "") {
+        if (typeof webhook_url !== "string")
+          return res.status(400).json({ error: "webhook_url must be an http(s) URL" });
+        try {
+          await assertSafeWebhookUrl(webhook_url);
+        } catch (e: any) {
+          if (e instanceof UnsafeUrlError) return res.status(400).json({ error: e.message });
+          throw e;
+        }
+        webhookUrl = webhook_url;
       }
 
       // A view-only wallet derives its subaddresses deterministically from the
@@ -126,26 +134,16 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
       const dup = await query(`SELECT 1 FROM merchants WHERE address = $1 LIMIT 1`, [address]);
       if (dup.rowCount) return res.status(409).json({ error: "a merchant with this address is already registered" });
 
-      const info = await daemonRpc<{ height: number }>("get_info");
-      // Start scanning a little before the current tip so payments sent right
-      // around signup are not missed.
-      const restoreHeight = Math.max(0, info.height - 100);
-
-      const walletName = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      await createViewOnlyWallet(walletName, address, view_key, restoreHeight);
-
-      const secret = newSecret();
-      const apiKey = `xmr_sk_${newSecret()}`;
-      const { rows } = await query(
-        `INSERT INTO merchants (name, address, view_key_enc, wallet_name, api_key_hash, webhook_url, webhook_secret, restore_height)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at`,
-        [name, address, encrypt(view_key), walletName, sha256Hex(apiKey), webhook_url, secret, restoreHeight]
-      );
+      // Returns as soon as the row is written. The worker builds the wallet,
+      // which takes minutes and would otherwise time out this request and
+      // destroy the only copy of the API key with it.
+      const created = await createMerchant({ name, address, view_key, webhook_url: webhookUrl });
       res.status(201).json({
-        merchant_id: rows[0].id,
-        api_key: apiKey,
-        webhook_secret: secret,
-        note: "Store api_key and webhook_secret now; they are shown only once. Webhook payloads are HMAC-SHA256 signed with webhook_secret (X-Webhook-Signature header).",
+        merchant_id: created.id,
+        api_key: created.apiKey,
+        webhook_secret: created.webhookSecret,
+        wallet_status: "provisioning",
+        note: "Store api_key and webhook_secret now; they are shown only once. Your view-only wallet is being prepared in the background: invoice creation returns 503 until it is ready, which usually takes a few minutes. Webhook payloads are HMAC-SHA256 signed with webhook_secret (X-Webhook-Signature header).",
       });
     } catch (e) {
       serverError(res, e, `${req.method} ${req.path}`);
@@ -171,6 +169,10 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
       });
     } catch (e: any) {
       if (e instanceof InvoiceInputError) return res.status(400).json({ error: e.message });
+      if (e instanceof WalletNotReadyError) {
+        res.setHeader("Retry-After", "60");
+        return res.status(503).json({ error: e.message });
+      }
       serverError(res, e, `${req.method} ${req.path}`);
     }
   });

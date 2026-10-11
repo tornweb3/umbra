@@ -17,8 +17,9 @@ export interface Merchant {
   name: string;
   address: string;
   wallet_name: string;
-  webhook_url: string;
+  webhook_url: string | null;
   webhook_secret: string;
+  wallet_ready_at: string | null;
   created_at: string;
 }
 
@@ -35,7 +36,7 @@ export async function requireAuth(
     return;
   }
   const { rows } = await query<Merchant>(
-    `SELECT id, name, address, wallet_name, webhook_url, webhook_secret, created_at
+    `SELECT id, name, address, wallet_name, webhook_url, webhook_secret, wallet_ready_at, created_at
      FROM merchants WHERE api_key_hash = $1`,
     [sha256Hex(key)]
   );

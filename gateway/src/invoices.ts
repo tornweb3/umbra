@@ -7,6 +7,15 @@ import { getXmrRate, isSupportedCurrency, SUPPORTED_CURRENCIES } from "./rates.j
 // Bad caller input; routes map it to 400. Anything else is a server error.
 export class InvoiceInputError extends Error {}
 
+// The merchant exists but its view-only wallet is still being built, so
+// create_address has nothing to mint from. Routes map this to 503: it is
+// temporary and the caller should come back, not change the request.
+export class WalletNotReadyError extends Error {
+  constructor(message = "this account's wallet is still being prepared; try again shortly") {
+    super(message);
+  }
+}
+
 export interface InvoiceInput {
   amount_xmr?: unknown;
   price_amount?: unknown;
@@ -32,9 +41,12 @@ export interface CreatedInvoice {
 }
 
 export async function createInvoice(
-  m: { id: string; wallet_name: string },
+  m: { id: string; wallet_name: string; wallet_ready_at?: unknown },
   input: InvoiceInput
 ): Promise<CreatedInvoice> {
+  // Minting a subaddress needs the wallet file the worker creates after
+  // signup. Checked before any rate lookup so nothing is quoted in vain.
+  if (m.wallet_ready_at === null || m.wallet_ready_at === undefined) throw new WalletNotReadyError();
   const { amount_xmr, price_amount, price_currency, description, expires_in_minutes, return_url, metadata } = input;
 
   if (return_url !== undefined && return_url !== null) {

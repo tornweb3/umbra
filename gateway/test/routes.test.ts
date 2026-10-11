@@ -217,6 +217,36 @@ describe("authentication", () => {
   });
 });
 
+describe("POST /api/invoices", () => {
+  const merchantRow = (over: Record<string, unknown> = {}) => ({
+    rows: [
+      {
+        id: "1cf6b8b8-1a2b-4c3d-8e4f-5a6b7c8d9e0f",
+        name: "Test Shop",
+        address: "5" + "A1b2C3d4E5".repeat(9) + "A1b2",
+        wallet_name: "m_1",
+        webhook_url: null,
+        webhook_secret: "s3cret",
+        wallet_ready_at: null,
+        created_at: "2026-09-22T10:00:00.000Z",
+        ...over,
+      },
+    ],
+    rowCount: 1,
+  });
+
+  it("503s with Retry-After while the wallet is still being provisioned", async () => {
+    query.mockResolvedValue(merchantRow());
+    const res = await request(app())
+      .post("/api/invoices")
+      .set("Authorization", "Bearer xmr_sk_good")
+      .send({ amount_xmr: "1.0" });
+    expect(res.status).toBe(503);
+    expect(res.headers["retry-after"]).toBe("60");
+    expect(res.body.error).toMatch(/still being prepared/);
+  });
+});
+
 describe("POST /api/merchants", () => {
   // Signup writes a wallet file and holds the wallet lock for minutes, so it
   // stays shut unless the operator deliberately opens it.

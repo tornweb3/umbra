@@ -35,6 +35,7 @@ const ORDER_LOCK_CLASS = 4242;
 export interface ShopifyStore {
   merchant_id: string;
   wallet_name: string;
+  wallet_ready_at: string | null;
   shop_domain: string;
   client_id: string;
   client_secret_enc: Buffer;
@@ -57,7 +58,7 @@ export interface ShopifyOrderRow {
 }
 
 const STORE_SELECT = `
-  SELECT s.merchant_id, m.wallet_name, s.shop_domain, s.client_id, s.client_secret_enc,
+  SELECT s.merchant_id, m.wallet_name, m.wallet_ready_at, s.shop_domain, s.client_id, s.client_secret_enc,
          s.access_token_enc, s.token_expires_at, s.payment_method_name
   FROM shopify_stores s JOIN merchants m ON m.id = s.merchant_id`;
 
@@ -361,7 +362,7 @@ async function ensureInvoiceLocked(store: ShopifyStore, gid: string, client: imp
   }
 
   const inv = await createInvoice(
-    { id: store.merchant_id, wallet_name: store.wallet_name },
+    { id: store.merchant_id, wallet_name: store.wallet_name, wallet_ready_at: store.wallet_ready_at },
     {
       price_amount: due.amount,
       price_currency: due.currencyCode,

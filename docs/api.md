@@ -23,10 +23,19 @@ the `X-Signup-Token` header. Limited to 5 attempts per hour per address.
 | `name` | Your shop name. |
 | `address` | Your primary Monero address, matching `MONERO_NETWORK`. |
 | `view_key` | Private **view** key, 64 hex characters. Never the spend key. |
-| `webhook_url` | http(s). Must not resolve to a private address. |
+| `webhook_url` | Optional. http(s), and must not resolve to a private address. Leave it out if you only use the hosted checkout page and poll instead. |
 
-Returns `merchant_id`, `api_key` and `webhook_secret`. The last two are shown
-**once**: only a hash of the key is stored, so a lost key cannot be recovered.
+Returns `merchant_id`, `api_key`, `webhook_secret` and
+`wallet_status: "provisioning"`. The key and secret are shown **once**: only a
+hash of the key is stored, so a lost key cannot be recovered.
+
+The account exists immediately, but its view-only wallet does not. Building one
+holds the wallet lock for minutes, longer than a reverse proxy will keep a
+connection open, and losing that response would lose the only copy of the API
+key. So the worker builds the wallet on a later pass, and until it is ready
+`POST /api/invoices` answers `503` with a `Retry-After` header. It usually takes
+a few minutes. A deployment running the API with no worker never provisions at
+all.
 
 One address can only be registered once. A view-only wallet derives its
 subaddresses from the keys, so two accounts sharing an address would mint the
@@ -182,6 +191,7 @@ Errors are `{"error": "..."}` with a status that says whose problem it is.
 | `409` | That Monero address is already registered. |
 | `429` | Rate limited. `Retry-After` says for how long. |
 | `500` | Our fault. The body carries a `reference` that appears in the server log. |
+| `503` | Temporary: the account's view-only wallet is still being built. `Retry-After` says when to come back. |
 
 ## Health
 

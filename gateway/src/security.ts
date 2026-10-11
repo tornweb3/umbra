@@ -27,9 +27,10 @@ export function serverError(res: express.Response, err: unknown, context: string
 const SIGNUP_TOKEN = process.env.SIGNUP_TOKEN ?? "";
 
 /**
- * Account creation costs a daemon call, a wallet file and minutes of the global
- * wallet lock, so it is closed unless the operator sets SIGNUP_TOKEN. Most
- * deployments serve one merchant: open it, sign up, close it again.
+ * Account creation eventually costs a wallet file and minutes of the global
+ * wallet lock (the worker pays that cost, not this request), so it is closed
+ * unless the operator sets SIGNUP_TOKEN. Most deployments serve one merchant:
+ * open it, sign up, close it again.
  */
 export function requireSignupToken(req: express.Request, res: express.Response, next: express.NextFunction): void {
   if (!SIGNUP_TOKEN) {

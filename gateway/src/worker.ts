@@ -13,6 +13,7 @@ import { pool, query } from "./db.js";
 import { hmacSign } from "./crypto.js";
 import { walletRpc, withWallet } from "./walletRpc.js";
 import { xmrFromAtomic } from "./money.js";
+import { provisionPendingWallets } from "./merchants.js";
 import { processShopify } from "./shopify.js";
 import { assertSafeWebhookUrl } from "./security.js";
 
@@ -50,9 +51,9 @@ async function expireInvoices(): Promise<void> {
 
 async function scanMerchants(): Promise<void> {
   const { rows: merchants } = await query(
-    `SELECT DISTINCT m.id, m.wallet_name
+    `SELECT DISTINCT m.id, m.wallet_name, m.webhook_url
      FROM merchants m JOIN invoices i ON i.merchant_id = m.id
-     WHERE i.status IN ('pending', 'detected')`
+     WHERE i.status IN ('pending', 'detected') AND m.wallet_ready_at IS NOT NULL`
   );
 
   for (const m of merchants) {
@@ -122,13 +123,13 @@ async function scanMerchants(): Promise<void> {
 
         if (inv.status === "pending" && totalAtomic >= due) {
           await query(`UPDATE invoices SET status = 'detected' WHERE id = $1 AND status = 'pending'`, [inv.id]);
-          await enqueueWebhook(inv, "payment_detected", txids, totalAtomic, minConf);
+          await enqueueWebhook(inv, "payment_detected", txids, totalAtomic, minConf, m.webhook_url !== null);
           console.log(`invoice ${inv.id}: detected (${xmrFromAtomic(totalAtomic)} XMR, ${txids.length} tx)`);
         }
 
         if (inv.status !== "confirmed" && confirmedAtomic >= due) {
           await query(`UPDATE invoices SET status = 'confirmed' WHERE id = $1 AND status <> 'confirmed'`, [inv.id]);
-          await enqueueWebhook(inv, "payment_confirmed", txids, totalAtomic, minConf);
+          await enqueueWebhook(inv, "payment_confirmed", txids, totalAtomic, minConf, m.webhook_url !== null);
           console.log(`invoice ${inv.id}: confirmed`);
         }
       }
@@ -143,8 +144,12 @@ async function enqueueWebhook(
   event: string,
   txids: string[],
   receivedAtomic: bigint,
-  confirmations: number
+  confirmations: number,
+  deliver: boolean
 ): Promise<void> {
+  // A merchant with no webhook URL uses the hosted checkout page and polls the
+  // API. Queueing deliveries for them would pile up rows nothing can ever send.
+  if (!deliver) return;
   const due = BigInt(inv.amount_atomic);
   const payload = {
     event,
@@ -175,7 +180,8 @@ async function dispatchWebhooks(): Promise<void> {
      FROM webhook_deliveries d
      JOIN invoices i ON i.id = d.invoice_id
      JOIN merchants m ON m.id = i.merchant_id
-     WHERE d.delivered_at IS NULL AND d.attempts < $1 AND d.next_attempt_at <= now()`,
+     WHERE d.delivered_at IS NULL AND d.attempts < $1 AND d.next_attempt_at <= now()
+       AND m.webhook_url IS NOT NULL`,
     [MAX_ATTEMPTS]
   );
 
@@ -235,6 +241,7 @@ async function main(): Promise<void> {
   console.log(`worker started: poll=${POLL_MS}ms confirmations=${CONFIRMATIONS}`);
   while (!stopping) {
     try {
+      await provisionPendingWallets();
       await expireInvoices();
       await scanMerchants();
       await dispatchWebhooks();
