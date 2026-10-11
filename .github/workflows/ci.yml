@@ -63,6 +63,12 @@ jobs:
         run: npm run migrate
       - name: Running them again changes nothing
         run: npm run migrate | grep "up to date"
+      # The unit suite mocks the database, so these are the only tests that
+      # execute any SQL.
+      - name: Integration tests against the real database
+        run: npm test
+        env:
+          TEST_DATABASE_URL: postgres://umbra:umbra@127.0.0.1:5432/umbra
 
   plugin:
     name: WooCommerce plugin

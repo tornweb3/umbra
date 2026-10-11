@@ -6,8 +6,10 @@
   "scripts": {
     "build": "tsc",
     "migrate": "tsx src/migrate.ts",
+    "portal:reset": "tsx src/tools/portalReset.ts",
     "server": "tsx src/server.ts",
     "start:migrate": "node dist/migrate.js",
+    "start:portal-reset": "node dist/tools/portalReset.js",
     "start:server": "node dist/server.js",
     "start:worker": "node dist/worker.js",
     "test": "vitest run",

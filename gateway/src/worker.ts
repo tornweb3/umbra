@@ -14,6 +14,7 @@ import { hmacSign } from "./crypto.js";
 import { walletRpc, withWallet } from "./walletRpc.js";
 import { xmrFromAtomic } from "./money.js";
 import { provisionPendingWallets } from "./merchants.js";
+import { sweepExpiredSessions } from "./portal/session.js";
 import { processShopify } from "./shopify.js";
 import { assertSafeWebhookUrl } from "./security.js";
 
@@ -242,6 +243,7 @@ async function main(): Promise<void> {
   while (!stopping) {
     try {
       await provisionPendingWallets();
+      await sweepExpiredSessions();
       await expireInvoices();
       await scanMerchants();
       await dispatchWebhooks();
