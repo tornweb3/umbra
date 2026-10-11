@@ -3,7 +3,10 @@
 import type express from "express";
 import { query } from "./db.js";
 import { decrypt, encrypt } from "./crypto.js";
-import { escapeHtml, merchant, requireAuth, UUID_RE } from "./http.js";
+import { merchant, requireAuth, UUID_RE } from "./http.js";
+import { when } from "./ui/components.js";
+import { html, safeUrl, SafeHtml } from "./ui/html.js";
+import { layout } from "./ui/layout.js";
 import { rateLimit, serverError } from "./security.js";
 import {
   adminGraphql,
@@ -71,28 +74,26 @@ export async function shopifyWebhookHandler(req: express.Request, res: express.R
 const payLimit = rateLimit({ windowMs: 60_000, max: 30 });
 const lookupLimit = rateLimit({ windowMs: 60_000, max: 20, message: "too many attempts, please wait a minute" });
 
-function page(title: string, body: string): string {
-  return `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(title)}</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:56px auto;padding:0 16px;text-align:center;color:#1a1a18;background:#faf9f5}
-h2{font-weight:600}p{color:#57544c;line-height:1.5}
-form{display:flex;gap:8px;justify-content:center;margin-top:20px}
-input{padding:10px 12px;border:1px solid #d9d4c7;border-radius:8px;font-size:16px;width:160px}
-button{padding:10px 18px;border:0;border-radius:8px;background:#d97757;color:#fff;font-size:16px;cursor:pointer}
-.err{color:#a34d2d}
-</style></head><body>${body}</body></html>`;
-}
+const page = (title: string, body: SafeHtml): string => layout({ title, body });
 
 function sendResult(res: express.Response, store: ShopifyStore, r: EnsureResult): void {
   if (r.kind === "invoice") {
     res.redirect(302, `/checkout/${r.invoiceId}`);
     return;
   }
-  const back = r.row?.status_page_url ? `<p><a href="${escapeHtml(r.row.status_page_url)}">View your order</a></p>` : "";
+  // status_page_url arrives from the Shopify Admin API. Escaping it makes it
+  // safe as text and says nothing about its scheme, so it is validated too.
+  const back = safeUrl(r.row?.status_page_url);
   const status = r.kind === "not_found" ? 404 : r.kind === "error" ? 502 : 200;
-  res.status(status).send(page(store.shop_domain, `<h2>${escapeHtml(r.row?.order_name ?? "Your order")}</h2><p>${escapeHtml(r.message)}</p>${back}`));
+  res.status(status).send(
+    page(
+      store.shop_domain,
+      html`<h2>${r.row?.order_name ?? "Your order"}</h2><p>${r.message}</p>${when(
+        back,
+        () => html`<p><a href="${back}">View your order</a></p>`
+      )}`
+    )
+  );
 }
 
 export function mountShopifyRoutes(app: express.Express, baseUrl: string): void {
@@ -206,11 +207,12 @@ export function mountShopifyRoutes(app: express.Express, baseUrl: string): void 
     try {
       const shop = req.params.shop.toLowerCase();
       const store = SHOP_DOMAIN_RE.test(shop) ? await loadStoreByShop(shop) : null;
-      if (!store || !/^\d{1,20}$/.test(req.params.orderId)) return res.status(404).send(page("Not found", "<h2>Order not found</h2>"));
+      if (!store || !/^\d{1,20}$/.test(req.params.orderId))
+        return res.status(404).send(page("Not found", html`<h2>Order not found</h2>`));
       sendResult(res, store, await ensureInvoice(store, orderGid(req.params.orderId)));
     } catch (e: any) {
       console.error(`shopify pay link failed: ${e.message}`);
-      res.status(502).send(page("Try again", `<h2>We couldn't prepare your payment</h2><p>Please try again in a minute.</p>`));
+      res.status(502).send(page("Try again", html`<h2>We couldn't prepare your payment</h2><p>Please try again in a minute.</p>`));
     }
   });
 
@@ -219,13 +221,13 @@ export function mountShopifyRoutes(app: express.Express, baseUrl: string): void 
     try {
       const shop = req.params.shop.toLowerCase();
       const store = SHOP_DOMAIN_RE.test(shop) ? await loadStoreByShop(shop) : null;
-      if (!store) return res.status(404).send(page("Not found", "<h2>Store not found</h2>"));
+      if (!store) return res.status(404).send(page("Not found", html`<h2>Store not found</h2>`));
       const form = (msg = "") =>
         page(
           `Pay with Monero · ${store.shop_domain}`,
-          `<h2>Pay with Monero</h2><p>Enter the order number from your confirmation page.</p>
-           ${msg ? `<p class="err">${escapeHtml(msg)}</p>` : ""}
-           <form method="get"><input name="order" inputmode="numeric" placeholder="#1001" autofocus required><button>Continue</button></form>`
+          html`<h2>Pay with Monero</h2><p>Enter the order number from your confirmation page.</p>
+${when(msg, () => html`<p class="err">${msg}</p>`)}
+<form method="get"><label for="order">Order number</label><input id="order" name="order" inputmode="numeric" placeholder="#1001" autofocus required><button>Continue</button></form>`
         );
       const raw = typeof req.query.order === "string" ? req.query.order : "";
       if (!raw) return res.send(form());
@@ -250,7 +252,7 @@ export function mountShopifyRoutes(app: express.Express, baseUrl: string): void 
       sendResult(res, store, await ensureInvoice(store, hit.order_gid));
     } catch (e: any) {
       console.error(`shopify pay lookup failed: ${e.message}`);
-      res.status(502).send(page("Try again", `<h2>We couldn't prepare your payment</h2><p>Please try again in a minute.</p>`));
+      res.status(502).send(page("Try again", html`<h2>We couldn't prepare your payment</h2><p>Please try again in a minute.</p>`));
     }
   });
 }

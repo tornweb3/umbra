@@ -1,16 +1,18 @@
 // The Express app, built by a function so tests can mount it without binding a
 // port. Process concerns (dotenv, listen, signals) live in server.ts.
 import express from "express";
-import QRCode from "qrcode";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { query } from "./db.js";
 import { encrypt, newSecret, sha256Hex } from "./crypto.js";
 import { createViewOnlyWallet, daemonRpc, walletRpcVersion } from "./walletRpc.js";
 import { xmrFromAtomic } from "./money.js";
-import { escapeHtml, merchant, requireAuth, UUID_RE } from "./http.js";
+import { merchant, requireAuth, UUID_RE } from "./http.js";
 import { createInvoice, InvoiceInputError } from "./invoices.js";
+import { INVOICE_SELECT, invoiceJson } from "./invoiceQueries.js";
+import { mountCheckoutRoutes } from "./checkout.js";
 import { securityHeaders } from "./headers.js";
+import { mountAssetRoutes } from "./ui/layout.js";
 import { mountShopifyRoutes, shopifyWebhookHandler } from "./shopifyRoutes.js";
 import {
   assertSafeWebhookUrl,
@@ -57,6 +59,7 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
   // is large, and the parser runs before any authentication.
   app.use(express.urlencoded({ extended: false, limit: "64kb" }));
 
+  mountAssetRoutes(app);
   app.use(express.static(path.join(__dirname, "..", "public")));
 
   // Buyer-facing routes are polled by checkout pages, so they get room to
@@ -261,98 +264,9 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
     }
   });
 
-  app.get("/checkout/:id", publicLimit, async (req, res) => {
-    try {
-      if (!UUID_RE.test(req.params.id)) return res.status(404).send("Invoice not found");
-      const { rows } = await query(`${INVOICE_SELECT} WHERE i.id = $1 GROUP BY i.id`, [req.params.id]);
-      if (rows.length === 0) return res.status(404).send("Invoice not found");
-      const inv = invoiceJson(rows[0]);
-      const amountStr = inv.amount_due_xmr;
-      const uri = `monero:${inv.subaddress}?tx_amount=${amountStr}`;
-      const qr = await QRCode.toDataURL(uri, { width: 280, margin: 2 });
-      const fiatLine =
-        inv.price_amount && inv.price_currency
-          ? `<p>${escapeHtml(inv.price_amount)} ${escapeHtml(inv.price_currency)} @ ${escapeHtml(Number(inv.rate).toFixed(2))} ${escapeHtml(inv.price_currency)}/XMR</p>`
-          : "";
-      // Integrations pass a return_url so the buyer can get back to their order.
-      const returnUrl: string | null = rows[0].return_url ?? null;
-      const returnLine = returnUrl ? `<p><a href="${escapeHtml(returnUrl)}">Return to your order</a></p>` : "";
-      res.send(`<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pay ${escapeHtml(amountStr)} XMR</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:560px;margin:40px auto;padding:0 16px;text-align:center}
-.addr{word-break:break-all;font-family:monospace;font-size:13px;background:#f4f4f4;padding:10px;border-radius:6px}
-.status{font-weight:bold;padding:8px 16px;border-radius:6px;display:inline-block;margin-top:12px}
-.pending{background:#fff3cd}.detected{background:#cfe2ff}.confirmed{background:#d1e7dd}.expired{background:#f8d7da}
-#countdown{color:#666;font-size:14px;margin-top:8px}
-</style></head><body>
-<h2>Pay ${escapeHtml(amountStr)} XMR</h2>
-${fiatLine}
-${inv.description ? `<p>${escapeHtml(inv.description)}</p>` : ""}
-<img src="${qr}" alt="QR code">
-<p class="addr">${escapeHtml(inv.subaddress)}</p>
-<p><a href="${escapeHtml(uri)}">Open in wallet</a></p>
-<div id="status" class="status ${escapeHtml(inv.status)}">${escapeHtml(inv.status)}</div>
-<div id="countdown"></div>
-${returnLine}
-<script>
-const expiresAt = new Date(${JSON.stringify(inv.expires_at)});
-function tick(){
-  const el = document.getElementById('countdown');
-  const st = document.getElementById('status').textContent;
-  if(st === 'confirmed' || st.startsWith('expired')){ el.textContent=''; return; }
-  const ms = expiresAt - Date.now();
-  el.textContent = ms > 0 ? 'Expires in ' + Math.floor(ms/60000) + 'm ' + Math.floor(ms%60000/1000) + 's' : 'Invoice expired';
-  setTimeout(tick, 1000);
-}
-async function poll(){
-  const r = await fetch('/api/invoices/' + ${JSON.stringify(inv.id)});
-  if(r.ok){const j = await r.json();
-    const el = document.getElementById('status');
-    el.textContent = j.status + (j.status === 'detected' || j.status === 'confirmed' ? ' (' + j.confirmations + ' conf)' : '');
-    el.className = 'status ' + j.status;
-    if(j.status === 'confirmed' || j.status === 'expired') return;}
-  setTimeout(poll, 10000);
-}
-tick(); poll();
-</script>
-</body></html>`);
-    } catch (e) {
-      serverError(res, e, `${req.method} ${req.path}`);
-    }
-  });
+  mountCheckoutRoutes(app, publicLimit);
 
   mountShopifyRoutes(app, baseUrl);
 
   return app;
-}
-
-const INVOICE_SELECT = `
-  SELECT i.id, i.merchant_id, i.amount_atomic, i.price_amount, i.price_currency, i.rate,
-         i.description, i.subaddress, i.status, i.expires_at, i.created_at, i.return_url, i.metadata,
-         COALESCE(SUM(p.amount_atomic), 0)::bigint AS received_atomic,
-         COALESCE(MAX(p.confirmations), 0) AS confirmations
-  FROM invoices i LEFT JOIN payments p ON p.invoice_id = i.id`;
-
-function invoiceJson(row: any) {
-  const due = BigInt(row.amount_atomic);
-  const received = BigInt(row.received_atomic);
-  return {
-    id: row.id,
-    status: row.status,
-    description: row.description,
-    subaddress: row.subaddress,
-    amount_due_atomic: due.toString(),
-    amount_due_xmr: xmrFromAtomic(due),
-    amount_received_atomic: received.toString(),
-    amount_received_xmr: xmrFromAtomic(received),
-    price_amount: row.price_amount,
-    price_currency: row.price_currency,
-    rate: row.rate,
-    confirmations: Number(row.confirmations),
-    metadata: row.metadata ?? null,
-    expires_at: row.expires_at,
-    created_at: row.created_at,
-  };
 }

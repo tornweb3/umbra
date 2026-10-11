@@ -135,6 +135,36 @@ describe("GET /checkout/:id", () => {
     expect(res.text).toContain('<a href="https://shop.example.com/orders/1042">Return to your order</a>');
   });
 
+  it("drops a return_url that is not http(s)", async () => {
+    // escapeHtml would have passed this through intact as an href.
+    for (const bad of ["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "java\tscript:alert(1)"]) {
+      query.mockResolvedValue({ rows: [invoiceRow({ return_url: bad })], rowCount: 1 });
+      const res = await request(app()).get(`/checkout/${INVOICE_ID}`);
+      expect(res.status).toBe(200);
+      expect(res.text).not.toContain("Return to your order");
+      expect(res.text.toLowerCase()).not.toContain("javascript:");
+      expect(res.text).not.toContain("data:text/html");
+    }
+  });
+
+  it("serves its CSS and script as assets rather than inline", async () => {
+    query.mockResolvedValue({ rows: [invoiceRow()], rowCount: 1 });
+    const res = await request(app()).get(`/checkout/${INVOICE_ID}`);
+    expect(res.text).toContain('<link rel="stylesheet" href="/assets/umbra.css">');
+    expect(res.text).toContain('<script src="/assets/checkout.js" defer></script>');
+    expect(res.text).not.toContain("<style");
+    // No inline script: every script tag carries a src.
+    expect(res.text).not.toMatch(/<script(?![^>]*\bsrc=)/);
+  });
+
+  it("hands the poller its invoice id and expiry as data attributes", async () => {
+    query.mockResolvedValue({ rows: [invoiceRow()], rowCount: 1 });
+    const res = await request(app()).get(`/checkout/${INVOICE_ID}`);
+    expect(res.text).toContain(`data-invoice-id="${INVOICE_ID}"`);
+    expect(res.text).toContain('data-expires-at="2026-09-22T11:54:03.184Z"');
+    expect(res.text).toContain('data-status="pending"');
+  });
+
   it("escapes a merchant-supplied description", async () => {
     query.mockResolvedValue({ rows: [invoiceRow({ description: "<script>alert(1)</script>" })], rowCount: 1 });
     const res = await request(app()).get(`/checkout/${INVOICE_ID}`);
