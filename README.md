@@ -35,6 +35,8 @@ customer  ──pays──▶  subaddress (your wallet)
   confirmation threshold, each signed with HMAC-SHA256 and retried with backoff
   until your server answers.
 - **A hosted checkout page** with a QR code, or build your own from the API.
+- **A merchant console in the browser**, served by the gateway itself, so setting
+  it up needs no terminal.
 - **Store integrations**: WooCommerce (a plugin you install) and Shopify (via a
   manual payment method).
 
@@ -77,9 +79,30 @@ time, so a second one would only contend for the same lock.
 
 ### Create your merchant account
 
-Account creation is closed by default, because each call writes a wallet file
-and holds the wallet lock for minutes. Open it, create your account, close it
-again:
+Open `http://localhost:3000` and follow the setup page. It asks for your shop
+name, your primary address, your private view key and a password for the
+console, and it shows your API key and webhook secret once, because only a hash
+of the key is stored and a lost key can be rotated but never recovered.
+
+Setup is open only while the gateway has no account, and only to a request from
+the machine it runs on. If you are reaching it through a reverse proxy, either
+tunnel in:
+
+```bash
+ssh -L 3000:127.0.0.1:3000 you@your-server
+```
+
+or open it deliberately by setting `SIGNUP_TOKEN` in `.env`, restarting, and
+visiting `/portal/setup?token=<your token>`.
+
+Your view-only wallet is built by the worker on its next pass, because that
+call holds the wallet lock for minutes and would time out a browser. Invoice
+creation answers `503` until it is ready.
+
+If you already have an account from the API and want the console, choose
+**I already have an API key** on the setup page.
+
+Headless alternative, if you would rather not use a browser at all:
 
 ```bash
 # set SIGNUP_TOKEN in .env, restart, then:
@@ -94,13 +117,8 @@ curl -X POST https://pay.example.com/api/merchants \
   }'
 ```
 
-The response carries your API key and webhook secret **once**. Only a hash of
-the key is stored, so a lost key cannot be recovered.
-
-It returns straight away, but your view-only wallet is built by the worker on
-its next pass, because that call holds the wallet lock for minutes. Invoice
-creation answers `503` until it is ready. `webhook_url` is optional: leave it
-out if you only use the hosted checkout page.
+`webhook_url` is optional: leave it out if you only use the hosted checkout
+page. Lost the console password? On the server: `npm run portal:reset -- <username>`.
 
 ## Using the API
 
@@ -126,7 +144,8 @@ const ok = got.length === expected.length &&
 if (!ok) return res.status(401).end();
 ```
 
-Full reference: [`docs/api.md`](docs/api.md).
+Full reference: [`docs/api.md`](docs/api.md). The console is described in
+[`docs/portal.md`](docs/portal.md).
 
 ## Integrations
 

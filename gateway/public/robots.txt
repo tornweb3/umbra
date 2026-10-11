@@ -1,0 +1,4 @@
+# Everything here is either a capability URL (an invoice id is the secret) or a
+# merchant's own console. None of it belongs in an index.
+User-agent: *
+Disallow: /

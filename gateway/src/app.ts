@@ -12,6 +12,7 @@ import { createInvoice, InvoiceInputError, WalletNotReadyError } from "./invoice
 import { createMerchant } from "./merchants.js";
 import { INVOICE_SELECT, invoiceJson } from "./invoiceQueries.js";
 import { mountCheckoutRoutes } from "./checkout.js";
+import { mountPortalRoutes } from "./portal/index.js";
 import { securityHeaders } from "./headers.js";
 import { mountAssetRoutes } from "./ui/layout.js";
 import { mountShopifyRoutes, shopifyWebhookHandler } from "./shopifyRoutes.js";
@@ -61,7 +62,8 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
   app.use(express.urlencoded({ extended: false, limit: "64kb" }));
 
   mountAssetRoutes(app);
-  app.use(express.static(path.join(__dirname, "..", "public")));
+  // index: false so a file in public/ can never shadow GET / below.
+  app.use(express.static(path.join(__dirname, "..", "public"), { index: false }));
 
   // Buyer-facing routes are polled by checkout pages, so they get room to
   // breathe; merchant routes are keyed by account rather than address.
@@ -269,6 +271,11 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
   mountCheckoutRoutes(app, publicLimit);
 
   mountShopifyRoutes(app, baseUrl);
+  mountPortalRoutes(app, { baseUrl, network: NETWORK });
+
+  // The front door. A gateway with no account sends you to setup, which is
+  // what makes it usable without a terminal.
+  app.get("/", (_req, res) => res.redirect(302, "/portal"));
 
   return app;
 }

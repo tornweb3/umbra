@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Umbra">
+  <rect width="32" height="32" rx="7" fill="#1b1b1b"/>
+  <path d="M9 9v8a7 7 0 0 0 14 0V9h-3.2v8a3.8 3.8 0 0 1-7.6 0V9z" fill="#f4f1ea"/>
+</svg>

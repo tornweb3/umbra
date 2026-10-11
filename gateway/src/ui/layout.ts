@@ -21,6 +21,10 @@ body.u-minimal form { max-width: 280px; margin: 22px auto 0; }
 body.u-minimal label { text-align: left; }
 body.u-minimal button { width: 100%; margin-top: 12px; }
 .err { color: #a34d2d; }
+.left { text-align: left; }
+.tabs { display: flex; justify-content: center; gap: 24px; font-size: 14px; padding: 14px 0; }
+.tabs a { color: var(--muted); text-decoration: none; }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; }
 
 /* Merchant portal: a header strip and a wider column. */
 body.u-portal { background: #faf9f7; }
@@ -122,6 +126,7 @@ export function layout(opts: LayoutOptions): string {
 ${html`<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${opts.title}</title>
 ${noIndex ? raw('<meta name="robots" content="noindex,nofollow">') : ""}
+<link rel="icon" href="/icon.svg">
 <link rel="stylesheet" href="${assetUrl("umbra.css")}">
 ${opts.head ?? ""}${scripts}</head>
 <body class="u-${chrome}">

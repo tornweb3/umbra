@@ -304,6 +304,12 @@ export async function endOtherSessions(userId: string, keepToken: string): Promi
   return rowCount ?? 0;
 }
 
+/** Used after a password reset: a compromise recovery kills every session. */
+export async function endAllSessions(userId: string): Promise<number> {
+  const { rowCount } = await query(`DELETE FROM portal_sessions WHERE user_id = $1`, [userId]);
+  return rowCount ?? 0;
+}
+
 export async function markReauth(sessionId: string): Promise<void> {
   await query(`UPDATE portal_sessions SET reauth_at = now() WHERE id = $1`, [sessionId]);
 }
