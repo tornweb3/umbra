@@ -179,6 +179,18 @@ npm test           # unit tests
 `gateway/tools/` holds a mock Shopify store and a webhook receiver, so the
 integrations can be exercised without a real store or real coins.
 
+## Support the project
+
+Umbra is free and takes no cut of anything it processes. If it is useful to
+you, donations keep the work going:
+
+```
+41z6wqBLsH9KJ2deZ69H4B6xe6UUzccZfeeHPRY7X6bzLKDVKgLHS3VECT6484FXUhhhkRGzFyc9h1D6Q3rU8fj99QNZNvy
+```
+
+Monero, mainnet. The same address, with a QR code, is on
+[umbra.international](https://www.umbra.international).
+
 ## License
 
 MIT, except the WooCommerce plugin, which is GPL-2.0-or-later because WordPress

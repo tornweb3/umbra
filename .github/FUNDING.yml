@@ -1,0 +1,3 @@
+# GitHub's Sponsor button only takes links, so the Monero address itself lives
+# in the README and on the site.
+custom: ["https://www.umbra.international", "https://github.com/tornweb3/umbra#support-the-project"]
