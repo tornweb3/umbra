@@ -6,6 +6,7 @@ const LINKS: Array<[key: string, href: string, label: string]> = [
   ["overview", "/portal", "Overview"],
   ["invoices", "/portal/invoices", "Invoices"],
   ["settings", "/portal/settings", "Settings"],
+  ["status", "/portal/status", "Status"],
 ];
 
 export function portalNav(active: string): SafeHtml {

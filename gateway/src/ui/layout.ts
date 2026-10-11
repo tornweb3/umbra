@@ -27,6 +27,9 @@ body.u-minimal button { width: 100%; margin-top: 12px; }
 .filters label { margin: 0; }
 .filters input, .filters select { width: auto; min-width: 160px; }
 .filters button { padding: 9px 16px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.dot.up { background: #2e7d4f; } .dot.down { background: #c0392b; }
+details { margin-top: 12px; } summary { cursor: pointer; font-size: 13px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .stat { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
 .stat .n { display: block; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }

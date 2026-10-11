@@ -176,7 +176,9 @@ Everything is environment variables, documented in
   directory. The database holds encrypted view keys and invoice history; the
   wallet files hold the subaddress indexes that map payments to invoices.
 - **Watch `/healthz`.** `?deep=1` also checks wallet-rpc and the daemon, and
-  reports unhealthy while the node is still syncing.
+  reports unhealthy while the node is still syncing. For a human, the console's
+  Status page says the same things plus whether the worker is actually running,
+  which is the usual answer when something looks stuck.
 - **Keep wallet-rpc and the daemon off the public internet.**
 
 ## Known limits

@@ -238,9 +238,27 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+/**
+ * Record that a pass happened.
+ *
+ * The console reads this to answer "is the worker running?", which is
+ * otherwise unanswerable: an API with no worker looks exactly like a quiet
+ * one, while provisioning, scanning and delivery all silently never happen.
+ */
+async function heartbeat(startedAt: number, error: string | null): Promise<void> {
+  await query(
+    `INSERT INTO worker_heartbeat (id, last_pass_at, pass_ms, last_error)
+     VALUES (true, now(), $1, $2)
+     ON CONFLICT (id) DO UPDATE SET last_pass_at = now(), pass_ms = $1, last_error = $2`,
+    [Date.now() - startedAt, error]
+  ).catch((e) => console.error(`heartbeat failed: ${e.message}`));
+}
+
 async function main(): Promise<void> {
   console.log(`worker started: poll=${POLL_MS}ms confirmations=${CONFIRMATIONS}`);
   while (!stopping) {
+    const startedAt = Date.now();
+    let failure: string | null = null;
     try {
       await provisionPendingWallets();
       await sweepExpiredSessions();
@@ -249,8 +267,10 @@ async function main(): Promise<void> {
       await dispatchWebhooks();
       await processShopify().catch((e) => console.error(`shopify pass failed: ${e.message}`));
     } catch (e: any) {
+      failure = String(e.message).slice(0, 500);
       console.error(`worker loop error: ${e.message}`);
     }
+    await heartbeat(startedAt, failure);
     if (stopping) break;
     await sleep(POLL_MS);
   }

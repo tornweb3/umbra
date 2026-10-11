@@ -13,6 +13,7 @@ import { mountInvoiceRoutes } from "./invoices.js";
 import { portalNav } from "./nav.js";
 import { mountSettingsRoutes } from "./settings.js";
 import { mountSetupRoutes } from "./setup.js";
+import { mountStatusRoutes, workerLooksStopped } from "./status.js";
 import { clearSessionCookie, endSession, portal, requireCsrf, requireSession } from "./session.js";
 
 export interface PortalOptions {
@@ -26,6 +27,7 @@ export function mountPortalRoutes(app: express.Express, opts: PortalOptions): vo
   mountAuthRoutes(app, opts);
   mountInvoiceRoutes(app, { baseUrl: opts.baseUrl });
   mountSettingsRoutes(app, { baseUrl: opts.baseUrl });
+  mountStatusRoutes(app, opts);
 
   const session = requireSession();
   const csrf = requireCsrf(opts.baseUrl);
@@ -42,6 +44,13 @@ export function mountPortalRoutes(app: express.Express, opts: PortalOptions): vo
       [m.id]
     );
     const by = (s: string) => counts.rows.find((r) => r.status === s)?.n ?? 0;
+    // When a wallet is stuck "preparing", the usual reason is that nobody
+    // started the worker. Say so instead of spinning.
+    const beat = provisioning
+      ? await query<{ last_pass_at: string | null }>(`SELECT last_pass_at FROM worker_heartbeat WHERE id`)
+      : { rows: [] as Array<{ last_pass_at: string | null }> };
+    const workerStopped = provisioning && workerLooksStopped(beat.rows[0]?.last_pass_at ?? null);
+
     const received = await query<{ total: string }>(
       `SELECT COALESCE(SUM(p.amount_atomic), 0)::text AS total
        FROM payments p JOIN invoices i ON i.id = p.invoice_id
@@ -52,10 +61,15 @@ export function mountPortalRoutes(app: express.Express, opts: PortalOptions): vo
 <p class="muted">Signed in as ${p.username}</p>
 
 ${when(
-  provisioning && !m.wallet_error,
+  provisioning && !m.wallet_error && !workerStopped,
   () => html`<div class="banner info">Your view-only wallet is being prepared. Invoice creation
-answers 503 until it is ready, which usually takes a few minutes. This needs the worker process
-to be running.</div>`
+answers 503 until it is ready, which usually takes a few minutes.</div>`
+)}
+${when(
+  workerStopped,
+  () => html`<div class="banner error">Your wallet cannot be prepared because the worker is not
+running. Start it, then this page will finish on its own.
+See <a href="/portal/status">Status</a>.</div>`
 )}
 ${when(
   provisioning && m.wallet_error,

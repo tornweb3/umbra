@@ -129,5 +129,25 @@ New keys and secrets are rendered in the body of the POST that created them,
 never in a redirect: a query string reaches proxy logs, browser history and
 `Referer`.
 
+**Status.** What to look at when something seems stuck, in the order it is
+usually wrong:
+
+- **Is the worker running?** An API with no worker looks exactly like a quiet
+  one: nothing is scanned, no webhook is delivered, no wallet is prepared. The
+  worker now records a heartbeat at the end of every pass, and this page says
+  how long ago that was, how long the pass took, and what it reported if it
+  failed. If it has not run in four poll intervals, the page says so and gives
+  the command to start it.
+- **Is the node synced?** A syncing node is shown as not ready, because
+  payments in blocks it has not seen yet cannot be detected.
+- **Is anything queued?** Invoices awaiting payment, payments awaiting
+  confirmations, webhooks retrying, wallets still being prepared.
+- **What is this?** Version, network, public base URL, confirmation threshold,
+  poll interval, and the migration history.
+
+The deep probes are cached for ten seconds, so reloading the page does not
+hammer your node. An unreachable service is reported on the page rather than
+failing it: the page's whole job is to work when other things do not.
+
 The Shopify connection is still API-only, documented in
 [the Shopify guide](shopify.md).
