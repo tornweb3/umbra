@@ -39,6 +39,9 @@ customer  ──pays──▶  subaddress (your wallet)
   gateway up, read your invoices and their webhook delivery log, rotate
   credentials, and see whether the worker and your node are healthy. No
   terminal, no second service.
+- **Payment pages**: a donation page, a tip jar or a pay link, shareable as a
+  URL, with no code and no JavaScript on the page. See
+  [`docs/payment-pages.md`](docs/payment-pages.md).
 - **Store integrations**: WooCommerce (a plugin you install) and Shopify (via a
   manual payment method).
 

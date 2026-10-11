@@ -15,6 +15,7 @@ export async function purgeMerchant(id: string): Promise<void> {
     `DELETE FROM shopify_orders WHERE merchant_id = $1`,
     `DELETE FROM shopify_stores WHERE merchant_id = $1`,
     `DELETE FROM invoices WHERE merchant_id = $1`,
+    `DELETE FROM payment_pages WHERE merchant_id = $1`,
     `DELETE FROM subaddress_pool WHERE merchant_id = $1`,
     `DELETE FROM merchants WHERE id = $1`,
   ];

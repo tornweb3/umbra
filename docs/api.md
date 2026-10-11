@@ -244,6 +244,29 @@ Errors are `{"error": "..."}` with a status that says whose problem it is.
 | `500` | Our fault. The body carries a `reference` that appears in the server log. |
 | `503` | Temporary: the account's view-only wallet is still being built. `Retry-After` says when to come back. |
 
+## Payment pages
+
+A shareable link that mints its own invoice: a pay link, a donation page or a
+tip jar. Full guide in [payment-pages.md](payment-pages.md).
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `POST` | `/api/pages` | Create. Returns the page with its public `url`. |
+| `GET` | `/api/pages` | List, including archived. |
+| `GET`/`PATCH` | `/api/pages/:id` | Read, update. |
+| `DELETE` | `/api/pages/:id` | Archives it. Nothing is deleted. |
+| `GET` | `/api/pages/:slug/public` | Public. What a visitor is allowed to know. |
+| `POST` | `/api/pages/:slug/charges` | Public. Mints an invoice for a chosen amount. |
+
+Creating a page turns the subaddress pool on, because the mint happens for an
+anonymous visitor and must not take the wallet lock.
+
+`POST /api/pages/:slug/charges` takes `{"amount": "0.1", "_ticket": "..."}`,
+where the ticket comes from the page's own HTML, and answers `201` with a
+`checkout_url`. It answers `503` with `Retry-After` when the pool is empty or
+the page has too many unfinished payments, and `403` when the ticket is
+missing, stale or was issued for another page.
+
 ## The subaddress pool
 
 Minting a subaddress takes the global wallet lock, because every wallet-rpc

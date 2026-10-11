@@ -34,3 +34,14 @@ export function newSecret(): string {
 export function sha256Hex(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
+
+/**
+ * A secret derived from MASTER_KEY for one internal purpose.
+ *
+ * Keeps things like page mint tickets out of the database without inventing a
+ * second key for the operator to manage. Different purposes get unrelated
+ * secrets, so one leaking tells you nothing about another.
+ */
+export function derivedSecret(purpose: string): string {
+  return createHmac("sha256", MASTER_KEY).update(`umbra/${purpose}`).digest("hex");
+}

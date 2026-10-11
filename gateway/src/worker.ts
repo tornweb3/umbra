@@ -14,6 +14,7 @@ import { hmacSign } from "./crypto.js";
 import { walletRpc, withWallet } from "./walletRpc.js";
 import { xmrFromAtomic } from "./money.js";
 import { provisionPendingWallets } from "./merchants.js";
+import { refreshAllProgress } from "./pages.js";
 import { refillPools, sweepClaimedPool } from "./subaddresses.js";
 import { sweepExpiredSessions } from "./portal/session.js";
 import { processShopify } from "./shopify.js";
@@ -269,6 +270,7 @@ async function main(): Promise<void> {
       await expireInvoices();
       await scanMerchants();
       await dispatchWebhooks();
+      await refreshAllProgress();
       await processShopify().catch((e) => console.error(`shopify pass failed: ${e.message}`));
     } catch (e: any) {
       failure = String(e.message).slice(0, 500);

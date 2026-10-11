@@ -42,6 +42,12 @@ export interface CreatedInvoice {
 }
 
 export interface CreateOptions {
+  /** Where this invoice came from, for the merchant's own records. */
+  source?: "api" | "shopify" | "page" | "pos";
+  /** The payment page that produced it, written by one code path only. */
+  paymentPageId?: string | null;
+  /** The part of the amount that is a tip, in piconero. */
+  tipAtomic?: bigint;
   /**
    * Take the subaddress from the pre-minted pool instead of minting one.
    *
@@ -111,9 +117,12 @@ export async function createInvoice(
     (return_url as string) ?? null,
     metadata ? JSON.stringify(metadata) : null,
     expiresMin,
+    opts.source ?? "api",
+    opts.paymentPageId ?? null,
+    (opts.tipAtomic ?? 0n).toString(),
   ];
-  const INSERT = `INSERT INTO invoices (merchant_id, amount_atomic, price_amount, price_currency, rate, description, subaddress, subaddr_index, return_url, metadata, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now() + make_interval(mins => $11))
+  const INSERT = `INSERT INTO invoices (merchant_id, amount_atomic, price_amount, price_currency, rate, description, subaddress, subaddr_index, return_url, metadata, expires_at, source, payment_page_id, tip_atomic)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now() + make_interval(mins => $11), $12, $13, $14)
      RETURNING id, status, expires_at`;
   const shape = (row: any, subaddress: string): CreatedInvoice => ({
     id: row.id,

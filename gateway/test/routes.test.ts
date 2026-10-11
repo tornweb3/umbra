@@ -256,3 +256,22 @@ describe("POST /api/merchants", () => {
     expect(query).not.toHaveBeenCalled();
   });
 });
+
+describe("the embed script", () => {
+  it("is served, and does nothing but open a window", async () => {
+    const res = await request(app()).get("/embed/v1.js");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("javascript");
+    // The claim in the docs is that it makes no network calls and touches no
+    // storage. Worth a test, because that claim is the reason to trust it.
+    for (const forbidden of ["fetch(", "XMLHttpRequest", "localStorage", "sessionStorage", "document.cookie"]) {
+      expect(res.text, forbidden).not.toContain(forbidden);
+    }
+    // It explains in a comment why it is not an iframe, so look for one being
+    // made rather than for the word.
+    expect(res.text).not.toMatch(/createElement\(\s*["']iframe/i);
+    expect(res.text).not.toContain("<iframe");
+    expect(res.text).toContain("window.open");
+    expect(res.text.length).toBeLessThan(4096);
+  });
+});

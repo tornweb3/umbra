@@ -3,6 +3,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
+    // One file at a time. The integration tests share a single database and a
+    // single wallet-mock port, and refillPools() is global by design, so
+    // running them beside each other would make them interfere.
+    fileParallelism: false,
     // Modules read configuration at import time, so these have to exist before
     // any test file loads. They are fixtures, not real secrets.
     env: {

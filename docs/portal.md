@@ -105,6 +105,9 @@ rate locked at creation. Creating an invoice mints a subaddress, which takes
 the wallet lock, so the form is rate limited per account and refuses while the
 wallet is still being prepared.
 
+**Pages.** Create and edit payment pages, copy the public link, and archive
+or reopen one. Described in [payment-pages.md](payment-pages.md).
+
 **Settings.** The webhook URL, webhook secret rotation, API key rotation and
 revocation, the console password, and the list of active sessions.
 

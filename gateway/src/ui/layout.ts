@@ -27,6 +27,19 @@ body.u-minimal button { width: 100%; margin-top: 12px; }
 .filters label { margin: 0; }
 .filters input, .filters select { width: auto; min-width: 160px; }
 .filters button { padding: 9px 16px; }
+/* Public payment pages. */
+.pay-page { text-align: left; }
+.pay-page h1 { font-size: 26px; margin: 0 0 10px; }
+.pay-description { color: var(--muted); white-space: pre-line; }
+.pay-amount { font-size: 34px; font-weight: 700; letter-spacing: -.02em; margin: 18px 0 6px; }
+.pay-unit { font-size: 18px; font-weight: 500; color: var(--muted); }
+.pay-suggested { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 6px; }
+.pay-suggested button { width: auto; margin: 0; }
+.pay-page button[type="submit"]:last-of-type { background: var(--accent); color: #fff; margin-top: 16px; }
+.pay-footer { font-size: 12px; margin-top: 22px; }
+.goal { margin: 18px 0; }
+.goal-bar { width: 100%; height: 10px; }
+.goal-text { font-size: 14px; color: var(--muted); margin-top: 6px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
 .dot.up { background: #2e7d4f; } .dot.down { background: #c0392b; }
 details { margin-top: 12px; } summary { cursor: pointer; font-size: 13px; }
@@ -68,6 +81,7 @@ th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--lin
 th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 
 label { display: block; font-size: 13px; margin: 14px 0 4px; }
+textarea { resize: vertical; }
 input, select, textarea { font: inherit; font-size: 16px; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: inherit; }
 .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
 button, .button { font: inherit; font-size: 15px; padding: 10px 18px; border: 0; border-radius: 6px; background: var(--ink); color: #fff; cursor: pointer; text-decoration: none; display: inline-block; }

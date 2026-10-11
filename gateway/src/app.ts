@@ -13,6 +13,7 @@ import { createMerchant, keyState, MAX_GRACE_MINUTES, revokePreviousKey, rotateA
 import { poolState, setPoolTarget } from "./subaddresses.js";
 import { INVOICE_SELECT, INVOICE_STATUSES, invoiceJson, listInvoices } from "./invoiceQueries.js";
 import { mountCheckoutRoutes } from "./checkout.js";
+import { mountPageRoutes } from "./pagesRoutes.js";
 import { mountPortalRoutes } from "./portal/index.js";
 import { securityHeaders } from "./headers.js";
 import { mountAssetRoutes } from "./ui/layout.js";
@@ -345,6 +346,7 @@ export function createApp({ baseUrl, network, portal }: AppOptions): express.Exp
 
   mountCheckoutRoutes(app, publicLimit);
 
+  mountPageRoutes(app, baseUrl);
   mountShopifyRoutes(app, baseUrl);
 
   if (portalEnabled) {

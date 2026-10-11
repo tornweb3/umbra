@@ -10,6 +10,7 @@ import { statusBadge, timestamp, when } from "../ui/components.js";
 import { mountAuthRoutes } from "./auth.js";
 import { portalHeaders } from "./headers.js";
 import { mountInvoiceRoutes } from "./invoices.js";
+import { mountPortalPageRoutes } from "./pages.js";
 import { portalNav } from "./nav.js";
 import { mountSettingsRoutes } from "./settings.js";
 import { mountSetupRoutes } from "./setup.js";
@@ -26,6 +27,7 @@ export function mountPortalRoutes(app: express.Express, opts: PortalOptions): vo
   mountSetupRoutes(app, opts);
   mountAuthRoutes(app, opts);
   mountInvoiceRoutes(app, { baseUrl: opts.baseUrl });
+  mountPortalPageRoutes(app, { baseUrl: opts.baseUrl });
   mountSettingsRoutes(app, { baseUrl: opts.baseUrl });
   mountStatusRoutes(app, opts);
 
@@ -99,7 +101,7 @@ confirms. That is fine if you use the hosted checkout page and poll the API.</di
 </table>
 </div>
 
-<p><a class="button" href="/portal/invoices">Invoices</a> <a class="button secondary" href="/portal/settings">Settings</a></p>
+<p><a class="button" href="/portal/invoices">Invoices</a> <a class="button secondary" href="/portal/pages">Payment pages</a> <a class="button secondary" href="/portal/settings">Settings</a></p>
 <p class="muted">The Shopify connection is still API-only, documented in
 <span class="mono">docs/shopify.md</span>.</p>
 

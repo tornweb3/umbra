@@ -14,7 +14,9 @@ export const DEFAULT_POOL_TARGET = Math.max(1, Number(process.env.SUBADDRESS_POO
 
 export class PoolEmptyError extends Error {
   constructor() {
-    super("no payment address is available right now; try again in a moment");
+    // Visitor-facing: a stranger on a donation page should read this and come
+    // back, not conclude the site is broken.
+    super("Payments are warming up. Try again in a moment.");
   }
 }
 
