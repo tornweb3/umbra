@@ -105,5 +105,29 @@ rate locked at creation. Creating an invoice mints a subaddress, which takes
 the wallet lock, so the form is rate limited per account and refuses while the
 wallet is still being prepared.
 
-Settings, credential rotation and the Shopify connection are next; the API does
-all of it today, documented in [the API reference](api.md).
+**Settings.** The webhook URL, webhook secret rotation, API key rotation and
+revocation, the console password, and the list of active sessions.
+
+Every one of those requires the password again, within the last ten minutes,
+and until it is entered the page shows the values but offers no form. A stolen
+session alone cannot change where your webhooks are delivered.
+
+Rotating the API key keeps the old one alive for a window you choose (an hour,
+a day, a week, or not at all). While that window is open the page tells you
+whether anything is still using the old key, which is what makes it safe to
+revoke deliberately rather than hopefully:
+
+> Something is still using the old key, last seen 40 seconds ago. Find it and
+> paste the new key there before revoking.
+
+and once it goes quiet, that it is safe. Rotating the key does not change the
+webhook secret, does not log you out, and does not affect existing invoices or
+their checkout links; the page says so, because the three buttons sit next to
+each other.
+
+New keys and secrets are rendered in the body of the POST that created them,
+never in a redirect: a query string reaches proxy logs, browser history and
+`Referer`.
+
+The Shopify connection is still API-only, documented in
+[the Shopify guide](shopify.md).

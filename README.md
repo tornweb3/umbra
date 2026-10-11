@@ -186,7 +186,6 @@ Everything is environment variables, documented in
   for a large multi-merchant deployment.
 - Incoming transfer amounts come from wallet-rpc as JSON numbers, so a single
   payment above roughly 9000 XMR would lose precision.
-- There is no API key rotation endpoint yet.
 - Refunds are something you send yourself, from your own wallet. Umbra never
   holds funds and cannot refund on your behalf.
 

@@ -9,7 +9,7 @@ import { daemonRpc, walletRpcVersion } from "./walletRpc.js";
 import { xmrFromAtomic } from "./money.js";
 import { merchant, requireAuth, UUID_RE } from "./http.js";
 import { createInvoice, InvoiceInputError, WalletNotReadyError } from "./invoices.js";
-import { createMerchant } from "./merchants.js";
+import { createMerchant, keyState, MAX_GRACE_MINUTES, revokePreviousKey, rotateApiKey } from "./merchants.js";
 import { INVOICE_SELECT, INVOICE_STATUSES, invoiceJson, listInvoices } from "./invoiceQueries.js";
 import { mountCheckoutRoutes } from "./checkout.js";
 import { mountPortalRoutes } from "./portal/index.js";
@@ -276,6 +276,44 @@ export function createApp({ baseUrl, network }: AppOptions): express.Express {
       const secret = newSecret();
       await query(`UPDATE merchants SET webhook_secret = $1 WHERE id = $2`, [secret, merchant(req).id]);
       res.json({ webhook_secret: secret, note: "Old secret is invalid immediately. Shown only once." });
+    } catch (e) {
+      serverError(res, e, `${req.method} ${req.path}`);
+    }
+  });
+
+  // Rotation, with an overlap so a live shop does not break the instant the
+  // merchant presses the button. README used to admit this was missing.
+  app.post("/api/me/rotate-key", requireAuth, async (req, res) => {
+    try {
+      const raw = (req.body ?? {}).grace_minutes;
+      const grace = raw === undefined ? 24 * 60 : Number(raw);
+      if (!Number.isFinite(grace) || grace < 0 || grace > MAX_GRACE_MINUTES)
+        return res.status(400).json({ error: `grace_minutes must be between 0 and ${MAX_GRACE_MINUTES}` });
+      const rotated = await rotateApiKey(merchant(req).id, grace);
+      res.json({
+        api_key: rotated.apiKey,
+        previous_key_expires_at: rotated.previousExpiresAt,
+        note:
+          grace > 0
+            ? "Shown only once. The previous key keeps working until previous_key_expires_at; call /api/me/revoke-previous-key once you have moved everything across."
+            : "Shown only once. The previous key stopped working immediately.",
+      });
+    } catch (e) {
+      serverError(res, e, `${req.method} ${req.path}`);
+    }
+  });
+
+  app.post("/api/me/revoke-previous-key", requireAuth, async (req, res) => {
+    try {
+      res.json({ ok: true, revoked: await revokePreviousKey(merchant(req).id) });
+    } catch (e) {
+      serverError(res, e, `${req.method} ${req.path}`);
+    }
+  });
+
+  app.get("/api/me/key", requireAuth, async (req, res) => {
+    try {
+      res.json(await keyState(merchant(req).id));
     } catch (e) {
       serverError(res, e, `${req.method} ${req.path}`);
     }

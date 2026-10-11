@@ -5,6 +5,7 @@ import { html, type SafeHtml } from "../ui/html.js";
 const LINKS: Array<[key: string, href: string, label: string]> = [
   ["overview", "/portal", "Overview"],
   ["invoices", "/portal/invoices", "Invoices"],
+  ["settings", "/portal/settings", "Settings"],
 ];
 
 export function portalNav(active: string): SafeHtml {

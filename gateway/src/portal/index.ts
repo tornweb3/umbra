@@ -11,6 +11,7 @@ import { mountAuthRoutes } from "./auth.js";
 import { portalHeaders } from "./headers.js";
 import { mountInvoiceRoutes } from "./invoices.js";
 import { portalNav } from "./nav.js";
+import { mountSettingsRoutes } from "./settings.js";
 import { mountSetupRoutes } from "./setup.js";
 import { clearSessionCookie, endSession, portal, requireCsrf, requireSession } from "./session.js";
 
@@ -24,6 +25,7 @@ export function mountPortalRoutes(app: express.Express, opts: PortalOptions): vo
   mountSetupRoutes(app, opts);
   mountAuthRoutes(app, opts);
   mountInvoiceRoutes(app, { baseUrl: opts.baseUrl });
+  mountSettingsRoutes(app, { baseUrl: opts.baseUrl });
 
   const session = requireSession();
   const csrf = requireCsrf(opts.baseUrl);
@@ -83,9 +85,9 @@ confirms. That is fine if you use the hosted checkout page and poll the API.</di
 </table>
 </div>
 
-<p><a class="button" href="/portal/invoices">Invoices</a></p>
-<p class="muted">Settings, credential rotation and the Shopify connection arrive in the next
-releases. The API does all of it today: see <span class="mono">docs/api.md</span>.</p>
+<p><a class="button" href="/portal/invoices">Invoices</a> <a class="button secondary" href="/portal/settings">Settings</a></p>
+<p class="muted">The Shopify connection is still API-only, documented in
+<span class="mono">docs/shopify.md</span>.</p>
 
 <form method="post" action="/portal/logout">
 <input type="hidden" name="_csrf" value="${p.csrf}">

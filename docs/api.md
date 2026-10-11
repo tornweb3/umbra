@@ -53,7 +53,38 @@ Changes where webhooks are delivered. Body: `{"webhook_url": "https://..."}`.
 ### `POST /api/me/rotate-secret`
 
 Issues a new webhook secret and returns it once. **The old secret stops working
-immediately**, so update your server first.
+immediately**, so update your server first. A signature either verifies or it
+does not, so there is no overlap to offer here.
+
+### `POST /api/me/rotate-key`
+
+Issues a new API key and returns it once. Unlike the webhook secret, the old
+key can keep working for a while, because it is pasted into shop plugins and a
+clean break would take a live shop down the moment you pressed the button.
+
+| Field | Notes |
+| --- | --- |
+| `grace_minutes` | How long the old key keeps working. 0 to 10080 (7 days). Default 1440. |
+
+```json
+{
+  "api_key": "xmr_sk_...",
+  "previous_key_expires_at": "2026-10-12T22:00:00.000Z"
+}
+```
+
+Pass `0` after a leak: the old key stops working immediately.
+
+### `POST /api/me/revoke-previous-key`
+
+Ends the overlap now. Returns `{"ok": true, "revoked": true}`, or
+`revoked: false` if there was nothing left to revoke.
+
+### `GET /api/me/key`
+
+When the current key was issued, whether a previous key is still live, when it
+expires, and **when it was last used**. That last field is the one that
+matters: while it keeps moving, something out there still holds the old key.
 
 ## Invoices
 

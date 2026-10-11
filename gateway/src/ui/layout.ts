@@ -68,7 +68,7 @@ label { display: block; font-size: 13px; margin: 14px 0 4px; }
 input, select, textarea { font: inherit; font-size: 16px; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: inherit; }
 .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
 button, .button { font: inherit; font-size: 15px; padding: 10px 18px; border: 0; border-radius: 6px; background: var(--ink); color: #fff; cursor: pointer; text-decoration: none; display: inline-block; }
-button.secondary { background: var(--paper); color: var(--ink); border: 1px solid var(--line); }
+button.secondary, .button.secondary { background: var(--paper); color: var(--ink); border: 1px solid var(--line); }
 button:disabled { opacity: .5; cursor: default; }
 `.trim();
 

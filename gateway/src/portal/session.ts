@@ -169,6 +169,32 @@ export async function authenticate(username: string, password: string): Promise<
   return { ok: false, reason: "credentials" };
 }
 
+/** Re-entering the password for a credential change, behind an existing session. */
+export async function confirmPassword(userId: string, password: string): Promise<boolean> {
+  const { rows } = await query<{ password_hash: string }>(`SELECT password_hash FROM portal_users WHERE id = $1`, [
+    userId,
+  ]);
+  if (!rows.length) return false;
+  return verifyPassword(password, rows[0].password_hash);
+}
+
+export interface SessionRow {
+  id: string;
+  user_agent: string | null;
+  last_seen_at: string;
+  created_at: string;
+  current: boolean;
+}
+
+export async function listSessions(userId: string, currentId: string): Promise<SessionRow[]> {
+  const { rows } = await query<SessionRow>(
+    `SELECT id, user_agent, last_seen_at, created_at, (id = $2) AS current
+     FROM portal_sessions WHERE user_id = $1 ORDER BY last_seen_at DESC`,
+    [userId, currentId]
+  );
+  return rows;
+}
+
 export async function setPassword(userId: string, password: string): Promise<void> {
   await query(
     `UPDATE portal_users SET password_hash = $2, password_changed_at = now(),

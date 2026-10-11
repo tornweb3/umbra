@@ -78,3 +78,63 @@ export async function provisionPendingWallets(limit = 3): Promise<void> {
     }
   }
 }
+
+export interface RotatedKey {
+  apiKey: string;
+  previousExpiresAt: string | null;
+}
+
+/** Longest overlap we will allow: a week of two live keys is plenty. */
+export const MAX_GRACE_MINUTES = 7 * 24 * 60;
+
+/**
+ * Issue a new API key, keeping the old one alive for `graceMinutes`.
+ *
+ * Zero means revoke the old key now, which is what you want after a leak. The
+ * default keeps a shop working while the merchant goes and pastes the new key
+ * where it belongs.
+ */
+export async function rotateApiKey(merchantId: string, graceMinutes = 24 * 60): Promise<RotatedKey> {
+  const grace = Math.min(Math.max(Math.trunc(graceMinutes) || 0, 0), MAX_GRACE_MINUTES);
+  const apiKey = `xmr_sk_${newSecret()}`;
+  const { rows } = await query<{ prev_api_key_expires_at: string | null }>(
+    `UPDATE merchants
+     SET prev_api_key_hash = CASE WHEN $2::int > 0 THEN api_key_hash ELSE NULL END,
+         prev_api_key_expires_at = CASE WHEN $2::int > 0 THEN now() + make_interval(mins => $2::int) ELSE NULL END,
+         prev_api_key_last_used_at = NULL,
+         api_key_hash = $3,
+         api_key_created_at = now()
+     WHERE id = $1
+     RETURNING prev_api_key_expires_at`,
+    [merchantId, grace, sha256Hex(apiKey)]
+  );
+  if (!rows.length) throw new Error(`no such merchant: ${merchantId}`);
+  return { apiKey, previousExpiresAt: rows[0].prev_api_key_expires_at };
+}
+
+/** End the overlap early, once the merchant has moved everything across. */
+export async function revokePreviousKey(merchantId: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE merchants SET prev_api_key_hash = NULL, prev_api_key_expires_at = NULL, prev_api_key_last_used_at = NULL
+     WHERE id = $1 AND prev_api_key_hash IS NOT NULL`,
+    [merchantId]
+  );
+  return Boolean(rowCount);
+}
+
+export interface KeyState {
+  api_key_created_at: string | null;
+  prev_api_key_expires_at: string | null;
+  prev_api_key_last_used_at: string | null;
+  has_previous: boolean;
+}
+
+export async function keyState(merchantId: string): Promise<KeyState> {
+  const { rows } = await query<KeyState>(
+    `SELECT api_key_created_at, prev_api_key_expires_at, prev_api_key_last_used_at,
+            (prev_api_key_hash IS NOT NULL AND prev_api_key_expires_at > now()) AS has_previous
+     FROM merchants WHERE id = $1`,
+    [merchantId]
+  );
+  return rows[0];
+}

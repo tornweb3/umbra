@@ -36,14 +36,27 @@ export async function requireAuth(
     res.status(401).json({ error: "missing Bearer API key" });
     return;
   }
-  const { rows } = await query<Merchant>(
-    `SELECT id, name, address, wallet_name, webhook_url, webhook_secret, wallet_ready_at, created_at
-     FROM merchants WHERE api_key_hash = $1`,
-    [sha256Hex(key)]
+  const hash = sha256Hex(key);
+  const { rows } = await query<Merchant & { used_previous: boolean }>(
+    `SELECT id, name, address, wallet_name, webhook_url, webhook_secret, wallet_ready_at, created_at,
+            (api_key_hash <> $1) AS used_previous
+     FROM merchants
+     WHERE api_key_hash = $1
+        OR (prev_api_key_hash = $1 AND prev_api_key_expires_at > now())`,
+    [hash]
   );
   if (rows.length === 0) {
     res.status(401).json({ error: "invalid API key" });
     return;
+  }
+  if (rows[0].used_previous) {
+    // Stamped so the console can tell the merchant whether anything still
+    // holds the old key. Throttled: this must not be a write per request.
+    await query(
+      `UPDATE merchants SET prev_api_key_last_used_at = now()
+       WHERE id = $1 AND (prev_api_key_last_used_at IS NULL OR prev_api_key_last_used_at < now() - interval '1 minute')`,
+      [rows[0].id]
+    ).catch(() => {});
   }
   (req as any).merchant = rows[0];
   next();
